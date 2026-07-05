@@ -11,6 +11,7 @@ import re
 
 from errlore.errmem.patterns import PatternDetector
 from errlore.errmem.tracker import ErrorTracker
+from errlore.sanitize import extract_readable_from_json
 
 logger = logging.getLogger("errlore.errmem")
 
@@ -38,19 +39,10 @@ def sanitize_description(text: str) -> str | None:
         return None
 
     if _RAW_JSON_RE.match(text):
-        # Attempt to pull something readable out of JSON-like blobs
-        for pattern in (
-            r'"message"\s*:\s*"([^"]{3,})"',
-            r'"error"\s*:\s*"([^"]{3,})"',
-            r'"description"\s*:\s*"([^"]{3,})"',
-        ):
-            m = re.search(pattern, text)
-            if m:
-                text = m.group(1).strip()
-                break
-        else:
-            # No readable field found — discard
+        extracted = extract_readable_from_json(text)
+        if extracted is None:
             return None
+        text = extracted
 
     if len(text) > _MAX_DESCRIPTION_LEN:
         text = text[: _MAX_DESCRIPTION_LEN - 3] + "..."

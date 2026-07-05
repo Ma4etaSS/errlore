@@ -22,15 +22,16 @@ from errlore import AgentMemory
 mem = AgentMemory("./agent_memory")
 
 # agent failed
-err_id = mem.log_error(model="gpt-4o", task_type="extraction", error="hallucinated dates")
-mem.resolve(err_id, lesson="For date extraction, demand ISO-8601 and verify against source")
+err_id = mem.log_error("gpt-4o", "extraction", error="hallucinated dates")
+mem.resolve(err_id, "Added date format validation",
+            lesson="For date extraction, demand ISO-8601 and verify against source")
 
-# next similar task
-inj = mem.inject_for(task="extract dates from contract", model="gpt-4o")
-prompt = base_prompt + inj.text          # lessons + KNOWN ISSUES included
+# next similar task — lessons + KNOWN ISSUES injected automatically
+inj = mem.inject_for("extract dates from contract", model="gpt-4o")
+prompt = f"Your task: extract dates from contract\n{inj.text}"
 
-# close the loop
-mem.report_outcome(inj, success=True)    # reinforces the lessons that helped
+# close the loop — reinforces lessons that helped, updates trust weights
+mem.report_outcome(inj, success=True)
 ```
 
 ## Status
