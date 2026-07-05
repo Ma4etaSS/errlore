@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from filelock import FileLock
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 logger = logging.getLogger("errlore.io")
 
@@ -218,6 +218,37 @@ class JSONLWriter:
                 if tmp_idx is not None:
                     with contextlib.suppress(OSError):
                         os.unlink(tmp_idx)
+
+    def atomic_update(
+        self,
+        path: Path,
+        transform: Callable[[list[dict[str, object]]], list[dict[str, object]] | None],
+    ) -> list[dict[str, object]] | None:
+        """Read-modify-write a JSONL file under ONE file lock (no lost updates).
+
+        ``atomic_rewrite`` alone is not race-safe for read-modify-write cycles:
+        if a caller reads the file, computes new content, and then rewrites,
+        any record appended by another thread/process in between is silently
+        lost.  ``atomic_update`` holds the file lock across the entire
+        read -> transform -> replace sequence, so concurrent ``append`` calls
+        (which take the same lock) serialize correctly.
+
+        Args:
+            path: Path to the JSONL file.
+            transform: Callback receiving the current records; returns the new
+                full record list, or None to abort without writing.
+
+        Returns:
+            The new record list that was written, or None if aborted.
+        """
+        lock = self._get_lock(path)
+        with lock:  # FileLock is re-entrant within the same thread
+            entries = self.read_all(path)
+            new_entries = transform(entries)
+            if new_entries is None:
+                return None
+            self.atomic_rewrite(path, new_entries)
+            return new_entries
 
     def read_all(self, path: Path) -> list[dict[str, object]]:
         """Read all valid records from a JSONL file.

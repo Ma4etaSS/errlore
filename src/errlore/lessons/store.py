@@ -116,29 +116,39 @@ class LessonStore:
         Returns:
             True if the error was found and resolved, False otherwise.
         """
+        # Race-safe: read-modify-write happens under ONE file lock via
+        # atomic_update, so errors appended concurrently by other threads
+        # or processes are never lost (they land before or after, intact).
+        target: ErrorRecord | None = None
+        already_resolved = False
+
+        def _apply(
+            entries: list[dict[str, object]],
+        ) -> list[dict[str, object]] | None:
+            nonlocal target, already_resolved
+            for entry in entries:
+                if entry.get("id") == error_id:
+                    rec = ErrorRecord.from_dict(entry)
+                    if rec.resolved:
+                        already_resolved = True
+                        target = rec
+                        return None  # abort write, nothing to change
+                    rec.resolved = True
+                    rec.resolution = resolution
+                    target = rec
+                    entry.update(rec.to_dict())
+                    return entries
+            return None  # not found, abort write
+
         with self._lock:
-            all_errors = self._read_errors()
-            target_idx: int | None = None
-            for idx, err in enumerate(all_errors):
-                if err.id == error_id:
-                    target_idx = idx
-                    break
+            self._writer.atomic_update(self._errors_path, _apply)
 
-            if target_idx is None:
-                logger.debug("resolve_error: error_id=%s not found", error_id)
-                return False
-
-            target = all_errors[target_idx]
-            if target.resolved:
-                logger.debug("resolve_error: error_id=%s already resolved", error_id)
-                return True
-
-            target.resolved = True
-            target.resolution = resolution
-            self._writer.atomic_rewrite(
-                self._errors_path,
-                [e.to_dict() for e in all_errors],
-            )
+        if target is None:
+            logger.debug("resolve_error: error_id=%s not found", error_id)
+            return False
+        if already_resolved:
+            logger.debug("resolve_error: error_id=%s already resolved", error_id)
+            return True
 
         if lesson:
             self.log_lesson(
@@ -367,35 +377,42 @@ class LessonStore:
         """
         from errlore.lessons.models import _utc_now_iso
 
+        # Race-safe read-modify-write under one file lock (see resolve_error).
+        target: Lesson | None = None
+
+        def _apply(
+            entries: list[dict[str, object]],
+        ) -> list[dict[str, object]] | None:
+            nonlocal target
+            for entry in entries:
+                if entry.get("id") == lesson_id:
+                    les = Lesson.from_dict(entry)
+                    delta = 0.1 if success else -0.1
+                    les.confidence = round(
+                        max(0.1, min(1.0, les.confidence + delta)), 2
+                    )
+                    les.applied_count += 1
+                    les.updated_at = _utc_now_iso()
+                    target = les
+                    entry.update(les.to_dict())
+                    return entries
+            return None  # not found, abort write
+
         with self._lock:
-            all_lessons = self._read_lessons()
-            target_idx: int | None = None
-            for idx, lesson in enumerate(all_lessons):
-                if lesson.id == lesson_id:
-                    target_idx = idx
-                    break
+            self._writer.atomic_update(self._lessons_path, _apply)
 
-            if target_idx is None:
-                logger.debug("reinforce: lesson_id=%s not found", lesson_id)
-                return False
-
-            target = all_lessons[target_idx]
-            delta = 0.1 if success else -0.1
-            target.confidence = round(max(0.1, min(1.0, target.confidence + delta)), 2)
-            target.applied_count += 1
-            target.updated_at = _utc_now_iso()
-
-            self._writer.atomic_rewrite(
-                self._lessons_path,
-                [le.to_dict() for le in all_lessons],
-            )
-            logger.debug(
-                "Reinforced lesson %s: confidence=%.2f applied_count=%d",
-                lesson_id,
-                target.confidence,
-                target.applied_count,
-            )
-            return True
+        if target is None:
+            logger.debug("reinforce: lesson_id=%s not found", lesson_id)
+            return False
+        # No retriever re-sync needed: reinforce never changes pattern text,
+        # so the embedding vector is unchanged.
+        logger.debug(
+            "Reinforced lesson %s: confidence=%.2f applied_count=%d",
+            lesson_id,
+            target.confidence,
+            target.applied_count,
+        )
+        return True
 
     def decay_unused(self) -> int:
         """Decay confidence of unused lessons.
@@ -408,26 +425,31 @@ class LessonStore:
         """
         from errlore.lessons.models import _utc_now_iso
 
-        with self._lock:
-            all_lessons = self._read_lessons()
-            decayed_count = 0
+        decayed_count = 0
+
+        def _apply(
+            entries: list[dict[str, object]],
+        ) -> list[dict[str, object]] | None:
+            nonlocal decayed_count
             now = _utc_now_iso()
-
-            for lesson in all_lessons:
-                if lesson.applied_count > 0 or lesson.confidence <= 0.3:
+            for entry in entries:
+                les = Lesson.from_dict(entry)
+                if les.applied_count > 0 or les.confidence <= 0.3:
                     continue
-                lesson.confidence = round(max(0.0, lesson.confidence - 0.05), 2)
-                lesson.updated_at = now
+                les.confidence = round(max(0.0, les.confidence - 0.05), 2)
+                les.updated_at = now
+                entry.update(les.to_dict())
                 decayed_count += 1
+            if decayed_count == 0:
+                return None  # nothing to change, abort write
+            return entries
 
-            if decayed_count > 0:
-                self._writer.atomic_rewrite(
-                    self._lessons_path,
-                    [le.to_dict() for le in all_lessons],
-                )
-                logger.info("Decayed %d unused lessons", decayed_count)
+        with self._lock:
+            self._writer.atomic_update(self._lessons_path, _apply)
 
-            return decayed_count
+        if decayed_count > 0:
+            logger.info("Decayed %d unused lessons", decayed_count)
+        return decayed_count
 
     # ------------------------------------------------------------------
     # Statistics

@@ -117,9 +117,14 @@ class AgentMemory:
         )
         self._trust: TrustEngine | None = None
         if trust:
-            self._trust = TrustEngine(
-                state_path=self._data_dir / "trust.json",
-            )
+            trust_path = self._data_dir / "trust.json"
+            # TrustEngine() does NOT read an existing state file -- only the
+            # load() classmethod does.  Without this branch, trust weights
+            # silently reset on every process restart.
+            if trust_path.exists():
+                self._trust = TrustEngine.load(trust_path)
+            else:
+                self._trust = TrustEngine(state_path=trust_path)
 
         # Lock for report_outcome idempotency (within one process).
         self._report_lock = threading.Lock()
