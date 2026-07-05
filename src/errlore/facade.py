@@ -82,6 +82,10 @@ class AgentMemory:
         decay_every: Run :meth:`LessonStore.decay_unused` every N
             :meth:`inject_for` calls.  Counter is in-process only --
             no cross-restart persistence needed.
+        embeddings: Enable semantic retrieval via embeddings (default False).
+            Requires ``errlore[embeddings]`` extras (fastembed + numpy).
+            When the extras are missing, falls back to word-overlap with
+            a warning.
     """
 
     def __init__(
@@ -91,6 +95,7 @@ class AgentMemory:
         trust: bool = True,
         max_lessons: int = 3,
         decay_every: int = 50,
+        embeddings: bool = False,
     ) -> None:
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +108,8 @@ class AgentMemory:
         self._injections_path = self._data_dir / "injections.jsonl"
 
         # Subsystems.
-        self._store = LessonStore(self._data_dir)
+        retriever = self._build_retriever(self._data_dir) if embeddings else None
+        self._store = LessonStore(self._data_dir, retriever=retriever)
         self._tracker = ErrorTracker(self._data_dir)
         self._detector = PatternDetector()
         self._injector = WarningInjector(
@@ -117,6 +123,31 @@ class AgentMemory:
 
         # Lock for report_outcome idempotency (within one process).
         self._report_lock = threading.Lock()
+
+    @staticmethod
+    def _build_retriever(data_dir: Path) -> Any:
+        """Try to build a FastEmbedBackend + VectorIndex retriever.
+
+        Returns the VectorIndex or None (with a warning) if the extras
+        are not installed.
+        """
+        try:
+            from errlore.retrieval.backend import FastEmbedBackend
+            from errlore.retrieval.index import VectorIndex
+
+            backend = FastEmbedBackend()
+            return VectorIndex(data_dir, backend)
+        except ImportError:
+            import warnings
+
+            warnings.warn(
+                "errlore[embeddings] extras not installed; "
+                "falling back to word-overlap retrieval.  "
+                "Install with:  pip install errlore[embeddings]",
+                UserWarning,
+                stacklevel=3,
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Error lifecycle

@@ -13,10 +13,13 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from errlore.io import JSONLWriter
 from errlore.lessons.models import ErrorRecord, Lesson
+
+if TYPE_CHECKING:
+    from errlore.retrieval import LessonRetriever
 
 logger = logging.getLogger("errlore.lessons")
 
@@ -26,15 +29,43 @@ class LessonStore:
 
     Args:
         data_dir: Directory for errors.jsonl and lessons.jsonl.
+        retriever: Optional semantic retriever implementing
+            :class:`~errlore.retrieval.LessonRetriever`.  When provided,
+            :meth:`search_lessons` uses semantic search with automatic
+            fallback to word-overlap when no semantic results are found.
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        retriever: LessonRetriever | None = None,
+    ) -> None:
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._errors_path = self._data_dir / "errors.jsonl"
         self._lessons_path = self._data_dir / "lessons.jsonl"
         self._writer = JSONLWriter()
         self._lock = threading.Lock()
+        self._retriever = retriever
+
+        if self._retriever is not None:
+            self._sync_retriever()
+
+    # ------------------------------------------------------------------
+    # Retriever sync
+    # ------------------------------------------------------------------
+
+    def _sync_retriever(self) -> None:
+        """Ensure all existing lessons are indexed in the retriever.
+
+        Called once during construction.  Each ``add`` is idempotent so
+        already-indexed lessons are skipped with only a set-lookup cost.
+        """
+        if self._retriever is None:
+            return
+        for lesson in self._read_lessons():
+            self._retriever.add(lesson.id, lesson.pattern)
 
     # ------------------------------------------------------------------
     # Errors
@@ -193,6 +224,8 @@ class LessonStore:
                 metadata=metadata,
             )
             self._writer.append(self._lessons_path, lesson.to_dict())
+            if self._retriever is not None:
+                self._retriever.add(lesson.id, lesson.pattern)
             logger.debug("Logged lesson %s: %s", lesson.id, pattern[:80])
             return lesson.id
 
@@ -210,20 +243,80 @@ class LessonStore:
     ) -> list[Lesson]:
         """Search lessons by structured filters and/or fuzzy text query.
 
-        Filter priority:
+        When a semantic retriever is configured and *query* is non-empty,
+        semantic search runs first.  If it yields no results (after
+        applying any task_type/error_type filters), the method falls back
+        to the original word-overlap logic.
+
+        Filter priority (word-overlap path):
         1. task_type / error_type exact match (both can combine)
         2. query: word overlap > 30%, fallback to substring match
         3. Results sorted by confidence descending
 
-        The retrieval method is intentionally behind this interface so it
-        can be swapped for embeddings later (phase 3) without API change.
-
         Returns:
-            Up to *limit* lessons, sorted by confidence descending.
+            Up to *limit* lessons.
         """
         if not query and not task_type and not error_type:
             return []
 
+        # -- Semantic path (retriever + query) ----------------------------
+        if self._retriever is not None and query:
+            sem = self._semantic_search(query, task_type, error_type, limit)
+            if sem:
+                return sem
+            # Fall through to word-overlap below.
+
+        # -- Word-overlap path (original logic) ---------------------------
+        return self._word_overlap_search(query, task_type, error_type, limit)
+
+    def _semantic_search(
+        self,
+        query: str,
+        task_type: str,
+        error_type: str,
+        limit: int,
+    ) -> list[Lesson]:
+        """Run semantic search via the configured retriever.
+
+        Returns an empty list when no relevant lessons are found so the
+        caller can fall back to word-overlap.
+        """
+        assert self._retriever is not None
+
+        # Fetch more candidates than needed to allow for post-filtering.
+        candidates = self._retriever.search(query, k=limit * 3)
+        if not candidates:
+            return []
+
+        score_map: dict[str, float] = {cid: score for cid, score in candidates}
+        candidate_ids = set(score_map)
+
+        all_lessons = self._read_lessons()
+        matched: list[Lesson] = []
+        for lesson in all_lessons:
+            if lesson.id not in candidate_ids:
+                continue
+            if task_type and lesson.task_type != task_type:
+                continue
+            if error_type and lesson.error_type != error_type:
+                continue
+            matched.append(lesson)
+
+        # Rank by semantic score (primary), confidence (secondary).
+        matched.sort(
+            key=lambda x: (score_map.get(x.id, 0.0), x.confidence),
+            reverse=True,
+        )
+        return matched[:limit]
+
+    def _word_overlap_search(
+        self,
+        query: str,
+        task_type: str,
+        error_type: str,
+        limit: int,
+    ) -> list[Lesson]:
+        """Original word-overlap search logic (preserved for fallback)."""
         all_lessons = self._read_lessons()
         results: list[Lesson] = []
 

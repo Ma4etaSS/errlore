@@ -23,11 +23,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+embeddings = [
+    "fastembed>=0.3",
+    "numpy>=1.26",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
+    "fastembed>=0.3",
+    "numpy>=1.26",
 ]
 
 [project.urls]
@@ -59,4 +65,8 @@ mypy_path = "src"
 
 [[tool.mypy.overrides]]
 module = "filelock.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fastembed.*"
 ignore_missing_imports = true
