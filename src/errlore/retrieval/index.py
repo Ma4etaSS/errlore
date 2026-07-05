@@ -46,7 +46,7 @@ class VectorIndex:
 
         self._ids: list[str] = []
         self._id_set: set[str] = set()
-        self._vectors: "npt.NDArray[np.floating]" | None = None  # shape (N, dim), L2-normalized
+        self._vectors: npt.NDArray[np.floating] | None = None  # shape (N, dim), L2-normalized
         self._lock = threading.Lock()
 
         self._load()
@@ -102,7 +102,7 @@ class VectorIndex:
         ids: list[str] = [str(x) for x in raw_ids] if isinstance(raw_ids, list) else []
 
         try:
-            arr: "npt.NDArray[np.floating]" = np.load(self._vectors_path)
+            arr: npt.NDArray[np.floating] = np.load(self._vectors_path)
         except (OSError, ValueError, EOFError) as exc:
             logger.warning("Cannot read vectors %s: %s", self._vectors_path, exc)
             return
@@ -173,11 +173,11 @@ class VectorIndex:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _normalize(v: "npt.NDArray[np.floating]") -> "npt.NDArray[np.floating]":
+    def _normalize(v: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
         """L2-normalize along the last axis.  Zero vectors stay zero."""
         norms = np.linalg.norm(v, axis=-1, keepdims=True)
         norms = np.where(norms == 0, 1.0, norms)
-        result: "npt.NDArray[np.floating]" = v / norms
+        result: npt.NDArray[np.floating] = v / norms
         return result
 
     # ------------------------------------------------------------------
@@ -271,9 +271,9 @@ class VectorIndex:
         raw = self._backend.embed([query])
         qarr = self._normalize(np.array(raw[0], dtype=np.float32).reshape(1, -1))
 
-        scores: "npt.NDArray[np.floating]" = (vectors @ qarr.T).flatten()
+        scores: npt.NDArray[np.floating] = (vectors @ qarr.T).flatten()
         top_k = min(k, len(scores))
-        top_indices: "npt.NDArray[np.intp]" = np.argsort(scores)[::-1][:top_k]
+        top_indices: npt.NDArray[np.intp] = np.argsort(scores)[::-1][:top_k]
 
         return [(ids[int(i)], float(scores[int(i)])) for i in top_indices]
 
