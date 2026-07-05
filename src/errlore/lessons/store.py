@@ -1,0 +1,376 @@
+"""Persistent lesson store backed by JSONL via errlore.io.
+
+Manages two files:
+    data_dir/errors.jsonl   -- error events
+    data_dir/lessons.jsonl  -- extracted lessons (single-record, mutable via atomic_rewrite)
+
+Unlike the NEXUS original, lessons are updated *in-place* via atomic_rewrite
+instead of appending new versions.  This eliminates dedup ambiguity at read time.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+from pathlib import Path
+from typing import Any
+
+from errlore.io import JSONLWriter
+from errlore.lessons.models import ErrorRecord, Lesson
+
+logger = logging.getLogger("errlore.lessons")
+
+
+class LessonStore:
+    """Thread-safe lesson store persisted as JSONL.
+
+    Args:
+        data_dir: Directory for errors.jsonl and lessons.jsonl.
+    """
+
+    def __init__(self, data_dir: Path) -> None:
+        self._data_dir = Path(data_dir)
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._errors_path = self._data_dir / "errors.jsonl"
+        self._lessons_path = self._data_dir / "lessons.jsonl"
+        self._writer = JSONLWriter()
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Errors
+    # ------------------------------------------------------------------
+
+    def log_error(
+        self,
+        model: str,
+        task_type: str,
+        error_type: str,
+        message: str,
+        *,
+        context: str = "",
+        stacktrace: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """Record an error event.
+
+        Returns:
+            The generated error ID (12-char hex).
+        """
+        record = ErrorRecord(
+            model=model,
+            task_type=task_type,
+            error_type=error_type,
+            message=message,
+            context=context,
+            stacktrace=stacktrace,
+            metadata=metadata,
+        )
+        self._writer.append(self._errors_path, record.to_dict())
+        logger.debug("Logged error %s: %s", record.id, message[:80])
+        return record.id
+
+    def resolve_error(
+        self,
+        error_id: str,
+        resolution: str,
+        lesson: str | None = None,
+    ) -> bool:
+        """Resolve an error by ID.  Optionally extract a lesson automatically.
+
+        When *lesson* is provided the store creates a new lesson entry with
+        confidence 0.8, linking it to the resolved error via ``source_error_id``.
+
+        The error record is updated in-place (atomic_rewrite).
+
+        Returns:
+            True if the error was found and resolved, False otherwise.
+        """
+        with self._lock:
+            all_errors = self._read_errors()
+            target_idx: int | None = None
+            for idx, err in enumerate(all_errors):
+                if err.id == error_id:
+                    target_idx = idx
+                    break
+
+            if target_idx is None:
+                logger.debug("resolve_error: error_id=%s not found", error_id)
+                return False
+
+            target = all_errors[target_idx]
+            if target.resolved:
+                logger.debug("resolve_error: error_id=%s already resolved", error_id)
+                return True
+
+            target.resolved = True
+            target.resolution = resolution
+            self._writer.atomic_rewrite(
+                self._errors_path,
+                [e.to_dict() for e in all_errors],
+            )
+
+        if lesson:
+            self.log_lesson(
+                pattern=f"{target.error_type}: {target.message}",
+                solution=lesson,
+                confidence=0.8,
+                task_type=target.task_type,
+                error_type=target.error_type,
+                source_error_id=error_id,
+            )
+
+        logger.info("Resolved error %s: %s", error_id, resolution[:80])
+        return True
+
+    # ------------------------------------------------------------------
+    # Lessons
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _word_overlap(a: str, b: str) -> float:
+        """Word-level Jaccard-style overlap (|intersection| / max(|A|, |B|))."""
+        words_a = set(a.lower().split())
+        words_b = set(b.lower().split())
+        if not words_a or not words_b:
+            return 0.0
+        intersection = words_a & words_b
+        return len(intersection) / max(len(words_a), len(words_b))
+
+    def _find_duplicate_lesson(self, pattern: str) -> Lesson | None:
+        """Check recent lessons for exact or fuzzy (>85% word overlap) duplicate."""
+        lessons = self._read_lessons()
+        normalized = pattern.lower().strip()
+        for lesson in lessons:
+            existing = lesson.pattern.lower().strip()
+            if existing == normalized:
+                return lesson
+            if self._word_overlap(normalized, existing) > 0.85:
+                return lesson
+        return None
+
+    def log_lesson(
+        self,
+        pattern: str,
+        solution: str,
+        *,
+        confidence: float = 0.8,
+        task_type: str = "",
+        error_type: str = "",
+        source_error_id: str = "",
+        source_errors: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """Record a lesson with deduplication.
+
+        Dedup rules (same as NEXUS source):
+        - Exact match on pattern (case-insensitive, stripped)
+        - Fuzzy match: word overlap > 85%
+
+        If a duplicate is found the existing lesson ID is returned and
+        no new record is written.
+
+        Returns:
+            Lesson ID (new or existing duplicate).
+        """
+        with self._lock:
+            existing = self._find_duplicate_lesson(pattern)
+            if existing is not None:
+                logger.debug(
+                    "Duplicate lesson skipped: '%s' matches '%s'",
+                    pattern[:60],
+                    existing.pattern[:60],
+                )
+                return existing.id
+
+            lesson = Lesson(
+                pattern=pattern,
+                solution=solution,
+                confidence=confidence,
+                task_type=task_type,
+                error_type=error_type,
+                source_error_id=source_error_id,
+                source_errors=source_errors or [],
+                metadata=metadata,
+            )
+            self._writer.append(self._lessons_path, lesson.to_dict())
+            logger.debug("Logged lesson %s: %s", lesson.id, pattern[:80])
+            return lesson.id
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    def search_lessons(
+        self,
+        *,
+        query: str = "",
+        task_type: str = "",
+        error_type: str = "",
+        limit: int = 10,
+    ) -> list[Lesson]:
+        """Search lessons by structured filters and/or fuzzy text query.
+
+        Filter priority:
+        1. task_type / error_type exact match (both can combine)
+        2. query: word overlap > 30%, fallback to substring match
+        3. Results sorted by confidence descending
+
+        The retrieval method is intentionally behind this interface so it
+        can be swapped for embeddings later (phase 3) without API change.
+
+        Returns:
+            Up to *limit* lessons, sorted by confidence descending.
+        """
+        if not query and not task_type and not error_type:
+            return []
+
+        all_lessons = self._read_lessons()
+        results: list[Lesson] = []
+
+        if task_type or error_type:
+            for lesson in all_lessons:
+                if task_type and lesson.task_type != task_type:
+                    continue
+                if error_type and lesson.error_type != error_type:
+                    continue
+                results.append(lesson)
+            # If query is also provided, further filter results
+            if query and results:
+                filtered: list[Lesson] = []
+                for lesson in results:
+                    overlap = self._word_overlap(query, lesson.pattern)
+                    if overlap > 0.3 or query.lower() in lesson.pattern.lower():
+                        filtered.append(lesson)
+                if filtered:
+                    results = filtered
+        elif query:
+            # Pure fuzzy search
+            for lesson in all_lessons:
+                overlap = self._word_overlap(query, lesson.pattern)
+                if overlap > 0.3:
+                    results.append(lesson)
+            # Fallback: substring
+            if not results:
+                query_lower = query.lower()
+                for lesson in all_lessons:
+                    if query_lower in lesson.pattern.lower():
+                        results.append(lesson)
+
+        results.sort(key=lambda x: x.confidence, reverse=True)
+        return results[:limit]
+
+    # ------------------------------------------------------------------
+    # Reinforce / Decay
+    # ------------------------------------------------------------------
+
+    def reinforce(self, lesson_id: str, success: bool) -> bool:
+        """Reinforce a lesson: adjust confidence +/-0.1, increment applied_count.
+
+        Confidence is clamped to [0.1, 1.0].  The lesson record is updated
+        in-place via atomic_rewrite (no append of a new version).
+
+        Returns:
+            True if the lesson was found and updated, False otherwise.
+        """
+        from errlore.lessons.models import _utc_now_iso
+
+        with self._lock:
+            all_lessons = self._read_lessons()
+            target_idx: int | None = None
+            for idx, lesson in enumerate(all_lessons):
+                if lesson.id == lesson_id:
+                    target_idx = idx
+                    break
+
+            if target_idx is None:
+                logger.debug("reinforce: lesson_id=%s not found", lesson_id)
+                return False
+
+            target = all_lessons[target_idx]
+            delta = 0.1 if success else -0.1
+            target.confidence = round(max(0.1, min(1.0, target.confidence + delta)), 2)
+            target.applied_count += 1
+            target.updated_at = _utc_now_iso()
+
+            self._writer.atomic_rewrite(
+                self._lessons_path,
+                [le.to_dict() for le in all_lessons],
+            )
+            logger.debug(
+                "Reinforced lesson %s: confidence=%.2f applied_count=%d",
+                lesson_id,
+                target.confidence,
+                target.applied_count,
+            )
+            return True
+
+    def decay_unused(self) -> int:
+        """Decay confidence of unused lessons.
+
+        Reduces confidence by 0.05 for lessons with applied_count == 0
+        and confidence > 0.3.  Updated via single atomic_rewrite.
+
+        Returns:
+            Number of lessons that were decayed.
+        """
+        from errlore.lessons.models import _utc_now_iso
+
+        with self._lock:
+            all_lessons = self._read_lessons()
+            decayed_count = 0
+            now = _utc_now_iso()
+
+            for lesson in all_lessons:
+                if lesson.applied_count > 0 or lesson.confidence <= 0.3:
+                    continue
+                lesson.confidence = round(max(0.0, lesson.confidence - 0.05), 2)
+                lesson.updated_at = now
+                decayed_count += 1
+
+            if decayed_count > 0:
+                self._writer.atomic_rewrite(
+                    self._lessons_path,
+                    [le.to_dict() for le in all_lessons],
+                )
+                logger.info("Decayed %d unused lessons", decayed_count)
+
+            return decayed_count
+
+    # ------------------------------------------------------------------
+    # Statistics
+    # ------------------------------------------------------------------
+
+    def counts(self) -> dict[str, int]:
+        """Return basic statistics about stored errors and lessons.
+
+        Returns:
+            Dict with keys: errors_total, errors_resolved, errors_unresolved,
+            lessons_total, lessons_applied (applied_count > 0).
+        """
+        errors = self._read_errors()
+        lessons = self._read_lessons()
+
+        resolved = sum(1 for e in errors if e.resolved)
+        applied = sum(1 for le in lessons if le.applied_count > 0)
+
+        return {
+            "errors_total": len(errors),
+            "errors_resolved": resolved,
+            "errors_unresolved": len(errors) - resolved,
+            "lessons_total": len(lessons),
+            "lessons_applied": applied,
+        }
+
+    # ------------------------------------------------------------------
+    # Internal I/O
+    # ------------------------------------------------------------------
+
+    def _read_errors(self) -> list[ErrorRecord]:
+        """Read all error records from disk."""
+        raw = self._writer.read_all(self._errors_path)
+        return [ErrorRecord.from_dict(r) for r in raw]
+
+    def _read_lessons(self) -> list[Lesson]:
+        """Read all lesson records from disk."""
+        raw = self._writer.read_all(self._lessons_path)
+        return [Lesson.from_dict(r) for r in raw]

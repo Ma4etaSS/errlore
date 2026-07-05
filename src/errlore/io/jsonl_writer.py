@@ -1,0 +1,245 @@
+"""Cross-process durable JSONL writer with filelock.
+
+Guarantees append atomicity via:
+- filelock (cross-process locking)
+- binary mode "ab" (atomic writes below PIPE_BUF)
+- explicit fsync by default
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import logging
+import os
+import struct
+import tempfile
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from filelock import FileLock
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+logger = logging.getLogger("errlore.io")
+
+_LOCK_TIMEOUT: float = 10.0
+_REPLACE_RETRIES: int = 5
+_REPLACE_BACKOFF: float = 0.5
+
+_DEFAULT_MAX_BYTES: int = 50_000_000  # 50 MB
+_DEFAULT_MAX_ARCHIVES: int = 3
+
+
+class JSONLWriter:
+    """Cross-process JSONL writer with filelock, rotation, and atomic rewrite."""
+
+    def __init__(
+        self,
+        lock_timeout: float = _LOCK_TIMEOUT,
+        max_bytes: int = _DEFAULT_MAX_BYTES,
+        max_archives: int = _DEFAULT_MAX_ARCHIVES,
+    ) -> None:
+        self._lock_timeout = lock_timeout
+        self._max_bytes = max_bytes
+        self._max_archives = max_archives
+        self._locks: dict[str, FileLock] = {}
+
+    def _get_lock(self, path: Path) -> FileLock:
+        """Get or create a FileLock for the given path."""
+        key = str(path)
+        if key not in self._locks:
+            self._locks[key] = FileLock(key + ".lock", timeout=self._lock_timeout)
+        return self._locks[key]
+
+    @staticmethod
+    def _rotate_versioned_files(path: Path, max_archives: int) -> None:
+        """Shift archive chain for a versioned file.
+
+        Works for both *.jsonl and *.idx: current becomes .1,
+        previous .1 becomes .2, etc.
+        """
+        for i in range(max_archives, 0, -1):
+            src = path.with_suffix(f"{path.suffix}.{i}")
+            dst = path.with_suffix(f"{path.suffix}.{i + 1}")
+            if i == max_archives and src.exists():
+                src.unlink()
+            elif src.exists():
+                src.replace(dst)
+
+        if path.exists():
+            path.replace(path.with_suffix(f"{path.suffix}.1"))
+
+    def _rotate_if_needed(self, path: Path) -> None:
+        """Rotate the JSONL file when it exceeds max_bytes."""
+        if not path.exists() or path.stat().st_size < self._max_bytes:
+            return
+        idx_path = path.with_suffix(".idx")
+        self._rotate_versioned_files(idx_path, self._max_archives)
+        self._rotate_versioned_files(path, self._max_archives)
+
+    def append(
+        self,
+        path: Path,
+        entry: dict[str, object],
+        *,
+        fsync: bool = True,
+    ) -> int:
+        """Append a single record to a JSONL file (cross-process safe).
+
+        Args:
+            path: Path to the JSONL file.
+            entry: Dictionary record to write.
+            fsync: Force fsync after write (default True).
+
+        Returns:
+            Byte offset of the written line's start.
+        """
+        lock = self._get_lock(path)
+        line = (json.dumps(entry, ensure_ascii=False, default=str) + "\n").encode("utf-8")
+
+        with lock:
+            self._rotate_if_needed(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "ab") as f:
+                offset = f.tell()
+                f.write(line)
+                if fsync:
+                    f.flush()
+                    os.fsync(f.fileno())
+        return offset
+
+    def append_batch(
+        self,
+        path: Path,
+        entries: Sequence[dict[str, object]],
+        *,
+        fsync: bool = True,
+    ) -> int:
+        """Append multiple records under a single lock acquisition.
+
+        Args:
+            path: Path to the JSONL file.
+            entries: Sequence of dict records.
+            fsync: Force fsync after the entire batch (default True).
+
+        Returns:
+            Number of records written.
+        """
+        if not entries:
+            return 0
+
+        lines = b"".join(
+            (json.dumps(e, ensure_ascii=False, default=str) + "\n").encode("utf-8")
+            for e in entries
+        )
+        lock = self._get_lock(path)
+
+        with lock:
+            self._rotate_if_needed(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "ab") as f:
+                f.write(lines)
+                if fsync:
+                    f.flush()
+                    os.fsync(f.fileno())
+        return len(entries)
+
+    def atomic_rewrite(
+        self,
+        path: Path,
+        entries: Sequence[dict[str, object]],
+    ) -> None:
+        """Atomically rewrite a JSONL file (filelock + tmp + os.replace).
+
+        Also rebuilds the sidecar .idx file atomically.
+
+        Args:
+            path: Path to the JSONL file.
+            entries: Full list of records to write.
+        """
+        from errlore.io.jsonl_index import JSONLIndex
+
+        lock = self._get_lock(path)
+        tmp_jsonl: str | None = None
+        tmp_idx: str | None = None
+        idx_path = path.with_suffix(".idx")
+
+        with lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data_fd, tmp_jsonl = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+            idx_fd, tmp_idx = tempfile.mkstemp(dir=path.parent, suffix=".idx.tmp")
+            try:
+                with os.fdopen(data_fd, "wb") as data_f, os.fdopen(idx_fd, "wb") as idx_f:
+                    offset = 0
+                    for entry in entries:
+                        line = (
+                            json.dumps(entry, ensure_ascii=False, default=str) + "\n"
+                        ).encode("utf-8")
+                        data_f.write(line)
+                        idx_f.write(struct.pack(">Q", offset))
+                        offset += len(line)
+                    data_f.flush()
+                    os.fsync(data_f.fileno())
+                    idx_f.flush()
+                    os.fsync(idx_f.fileno())
+
+                # Replace data file with retries (Windows Defender can hold handles)
+                for attempt in range(_REPLACE_RETRIES):
+                    try:
+                        if tmp_jsonl is not None:
+                            os.replace(tmp_jsonl, str(path))
+                        tmp_jsonl = None
+                        break
+                    except PermissionError:
+                        if attempt < _REPLACE_RETRIES - 1:
+                            time.sleep(_REPLACE_BACKOFF * (attempt + 1))
+                        else:
+                            raise
+
+                # Replace index file
+                try:
+                    if tmp_idx is not None:
+                        os.replace(tmp_idx, str(idx_path))
+                    tmp_idx = None
+                except PermissionError:
+                    # If sidecar locked, rebuild index from fresh JSONL
+                    JSONLIndex(path).rebuild()
+                    if tmp_idx is not None:
+                        with contextlib.suppress(OSError):
+                            os.unlink(tmp_idx)
+                    tmp_idx = None
+            finally:
+                if tmp_jsonl is not None:
+                    with contextlib.suppress(OSError):
+                        os.unlink(tmp_jsonl)
+                if tmp_idx is not None:
+                    with contextlib.suppress(OSError):
+                        os.unlink(tmp_idx)
+
+    def read_all(self, path: Path) -> list[dict[str, object]]:
+        """Read all valid records from a JSONL file.
+
+        Args:
+            path: Path to the JSONL file.
+
+        Returns:
+            List of parsed dict records.
+        """
+        if not path.exists():
+            return []
+        records: list[dict[str, object]] = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if isinstance(obj, dict):
+                        records.append(obj)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping corrupted line in %s", path.name)
+        return records
