@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>errlore — memory for AI agents that learns from failures</title>
+<meta name="description" content="Your agent keeps making the same mistakes. errlore turns failures into lessons, injects them into prompts, and tracks which model to trust. Embedded, file-based, offline.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312100d'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' fill='%23d9a441' text-anchor='middle'%3Ee%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#12100d; --bg2:#1a1713; --panel:#201c16; --line:#332c22;
+    --ink:#e9e2d4; --dim:#9a8f7c; --gold:#d9a441; --gold-dim:#8a6a2f;
+    --good:#7fb069; --bad:#c25e4c; --code-bg:#171410;
+    --serif:Georgia,'Times New Roman',serif;
+    --mono:ui-monospace,'JetBrains Mono','Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font:16px/1.65 var(--serif)}
+  a{color:var(--gold);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px}
+  code,pre,.mono{font-family:var(--mono)}
+
+  nav{display:flex;justify-content:space-between;align-items:center;padding:22px 0;border-bottom:1px solid var(--line)}
+  .logo{font-family:var(--mono);font-size:20px;color:var(--ink);font-weight:700}
+  .logo em{color:var(--gold);font-style:normal}
+  nav .links a{margin-left:22px;color:var(--dim);font-family:var(--mono);font-size:14px}
+  nav .links a:hover{color:var(--gold)}
+
+  header{padding:88px 0 64px;text-align:left}
+  h1{font-size:44px;line-height:1.15;font-weight:400;max-width:720px}
+  h1 em{font-style:italic;color:var(--gold)}
+  .sub{margin-top:20px;font-size:19px;color:var(--dim);max-width:640px}
+  .pip{margin-top:36px;display:inline-flex;align-items:center;gap:14px;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:14px 20px;font-family:var(--mono);font-size:16px}
+  .pip .dollar{color:var(--gold-dim)}
+  .cta-row{margin-top:18px;font-family:var(--mono);font-size:14px;color:var(--dim)}
+
+  .story{border-left:3px solid var(--gold);background:var(--bg2);padding:26px 30px;margin:30px 0 70px;font-style:italic;font-size:18px;color:var(--ink)}
+  .story b{color:var(--gold);font-style:normal}
+  .story .who{display:block;margin-top:12px;font-style:normal;font-family:var(--mono);font-size:13px;color:var(--dim)}
+
+  h2{font-size:15px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);font-family:var(--mono);font-weight:600;margin:0 0 26px}
+  section{padding:38px 0}
+
+  .loops{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .loop{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px}
+  .loop h3{font-size:18px;font-weight:600;margin-bottom:10px}
+  .loop h3 .n{color:var(--gold);font-family:var(--mono);margin-right:8px}
+  .loop p{font-size:15px;color:var(--dim)}
+  .loop code{font-size:13px;color:var(--gold);background:var(--code-bg);padding:1px 6px;border-radius:4px}
+
+  .term{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+  .term .bar{display:flex;gap:7px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .term .bar i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block}
+  .term pre{padding:20px 22px;font-size:14px;line-height:1.7;overflow-x:auto;color:var(--ink)}
+  .c-com{color:var(--dim)} .c-str{color:var(--good)} .c-kw{color:var(--gold)} .c-out{color:#b8a98c}
+
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:14px;margin-top:6px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;letter-spacing:.05em}
+  td b{color:var(--gold)}
+  .zero{color:var(--bad)}
+  .note{margin-top:12px;font-size:14px;color:var(--dim);font-style:italic}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px}
+  .card h3{font-size:17px;margin-bottom:8px}
+  .card p{font-size:15px;color:var(--dim)}
+
+  .privacy{display:flex;gap:26px;flex-wrap:wrap;margin-top:4px}
+  .privacy div{font-family:var(--mono);font-size:14px;color:var(--dim)}
+  .privacy b{display:block;color:var(--ink);font-size:15px;margin-bottom:3px}
+  .privacy b::before{content:"◈ ";color:var(--gold)}
+
+  footer{border-top:1px solid var(--line);margin-top:60px;padding:34px 0 46px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:14px;color:var(--dim)}
+
+  @media(max-width:760px){
+    h1{font-size:32px}
+    .loops,.grid2{grid-template-columns:1fr}
+    nav .links a{margin-left:14px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="logo">err<em>lore</em></div>
+  <div class="links">
+    <a href="https://github.com/Ma4etaSS/errlore">GitHub</a>
+    <a href="https://pypi.org/project/errlore/">PyPI</a>
+    <a href="#quickstart">Docs</a>
+  </div>
+</nav>
+
+<header>
+  <h1>Your agent keeps making <em>the same mistakes.</em><br>errlore makes that stop.</h1>
+  <p class="sub">A memory layer for AI agents that learns from failures: every resolved
+  error becomes a lesson, lessons are injected into future prompts, and Bayesian trust
+  weights track which model to believe for which job.</p>
+  <div class="pip"><span class="dollar">$</span> pip install errlore</div>
+  <div class="cta-row">MIT · zero required dependencies beyond filelock · works fully offline</div>
+</header>
+
+<div class="story">
+  We spent three months building a 324,000-line multi-LLM "brain" — ensembles, arbiters,
+  cognitive phases. Then we benchmarked it honestly: <b>the clever parts didn't work.</b>
+  One part did — the loop that turned failures into lessons and injected them back.
+  errlore is that one part, extracted, fixed, and finished.
+  <span class="who">— why this library exists</span>
+</div>
+
+<section>
+  <h2>Three loops, all closed</h2>
+  <div class="loops">
+    <div class="loop">
+      <h3><span class="n">01</span>Lessons</h3>
+      <p>An error you resolve becomes a lesson. The next similar task gets it injected
+      into the prompt. <code>report_outcome()</code> reinforces lessons that helped and
+      decays ones that never do — errlore knows whether its own memory works.</p>
+    </div>
+    <div class="loop">
+      <h3><span class="n">02</span>Known issues</h3>
+      <p>Per-model weakness tracking. When gpt-x has failed date extraction four times,
+      the fifth prompt says so: <code>KNOWN ISSUES: TimeoutError (x4)</code>. Models get
+      warned about their own history.</p>
+    </div>
+    <div class="loop">
+      <h3><span class="n">03</span>Trust</h3>
+      <p>Bayesian per-model, per-domain trust weights built from observed outcomes.
+      <code>mem.best_model("code")</code> answers the routing question with data,
+      not vibes.</p>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <h2>Sixty seconds to a learning agent</h2>
+  <div class="term">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <pre><span class="c-kw">from</span> errlore <span class="c-kw">import</span> AgentMemory
+
+mem = AgentMemory(<span class="c-str">"./agent_memory"</span>)
+
+<span class="c-com"># 1. agent failed — record it</span>
+err = mem.log_error(<span class="c-str">"gpt-5.5"</span>, <span class="c-str">"extraction"</span>, error=<span class="c-str">"hallucinated dates"</span>)
+
+<span class="c-com"># 2. you fixed it — extract the lesson</span>
+mem.resolve(err, <span class="c-str">"added validation"</span>,
+            lesson=<span class="c-str">"For date extraction, demand ISO-8601 and verify against source"</span>)
+
+<span class="c-com"># 3. next similar task — memory speaks up</span>
+inj = mem.inject_for(<span class="c-str">"extract dates from contract"</span>, model=<span class="c-str">"gpt-5.5"</span>)
+prompt = task + inj.text
+<span class="c-out"># [LESSONS FROM PAST FAILURES]
+# - hallucinated dates -> For date extraction, demand ISO-8601...
+# KNOWN ISSUES:
+# - Past error on similar task: hallucinated dates</span>
+
+<span class="c-com"># 4. close the loop — did it help?</span>
+mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
+  </div>
+</section>
+
+<section>
+  <h2>Finds lessons by meaning, not keywords</h2>
+  <p style="color:var(--dim);margin-bottom:18px">Optional local embeddings
+  (<span class="mono">pip install errlore[embeddings]</span>, ~120&nbsp;MB ONNX model, RU/EN
+  and 50+ languages, no API keys). On a deliberately adversarial gold set — every query
+  paraphrased so it shares <i>zero words</i> with its lesson:</p>
+  <table>
+    <tr><th>metric</th><th>keyword overlap</th><th>errlore embeddings</th></tr>
+    <tr><td class="mono">recall@1</td><td class="zero">0.000</td><td><b>0.375</b></td></tr>
+    <tr><td class="mono">recall@5</td><td class="zero">0.000</td><td><b>0.675</b></td></tr>
+    <tr><td class="mono">MRR</td><td class="zero">0.000</td><td><b>0.488</b></td></tr>
+  </table>
+  <p class="note">Reproduce it yourself: <span class="mono">python benchmarks/bench_retrieval.py</span> — the gold set ships in the repo.</p>
+</section>
+
+<section>
+  <h2>Drops into what you already run</h2>
+  <div class="grid2">
+    <div class="card"><h3>Open WebUI</h3><p>Two functions — a Filter that injects lessons
+    into every chat and a feedback Action that closes the loop from a button under each
+    message. Paste, enable, done.</p></div>
+    <div class="card"><h3>Python SDKs</h3><p>Working examples for the OpenAI SDK,
+    Anthropic SDK, and LangChain in <span class="mono">examples/</span> — each runnable
+    offline, each showing the full learn-inject-reinforce cycle.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Built for the privacy-first crowd</h2>
+  <div class="privacy">
+    <div><b>Files, not clouds</b>plain JSONL on your disk<br>fsync'd, file-locked, atomic</div>
+    <div><b>Zero calls home</b>no telemetry, no API keys<br>embeddings run locally</div>
+    <div><b>Survives anything</b>process restarts, concurrent<br>writers, corrupted lines</div>
+    <div><b>Honest by design</b>no fake reinforcement —<br>outcomes only from real feedback</div>
+  </div>
+</section>
+
+<footer>
+  <div>errlore · MIT · <a href="https://github.com/Ma4etaSS/errlore">github.com/Ma4etaSS/errlore</a></div>
+  <div><a href="https://pypi.org/project/errlore/">pypi.org/project/errlore</a></div>
+</footer>
+
+</div>
+</body>
+</html>
