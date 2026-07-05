@@ -14,6 +14,7 @@ import logging
 import os
 import struct
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -34,25 +35,54 @@ _DEFAULT_MAX_ARCHIVES: int = 3
 
 
 class JSONLWriter:
-    """Cross-process JSONL writer with filelock, rotation, and atomic rewrite."""
+    """Cross-process JSONL writer with filelock, rotation, and atomic rewrite.
+
+    Args:
+        lock_timeout: Timeout in seconds for acquiring file locks.
+        max_bytes: Maximum file size before rotation.  ``None`` disables
+            rotation entirely -- useful for files with ID-based lookups
+            (errors, lessons, injections) where all records must remain
+            visible.  Growth is handled by future log compaction.
+        max_archives: Maximum number of rotated archive files to keep.
+    """
 
     def __init__(
         self,
         lock_timeout: float = _LOCK_TIMEOUT,
-        max_bytes: int = _DEFAULT_MAX_BYTES,
+        max_bytes: int | None = _DEFAULT_MAX_BYTES,
         max_archives: int = _DEFAULT_MAX_ARCHIVES,
     ) -> None:
         self._lock_timeout = lock_timeout
         self._max_bytes = max_bytes
         self._max_archives = max_archives
         self._locks: dict[str, FileLock] = {}
+        self._lock_guard = threading.Lock()
+        # C1: mtime+size read cache -- avoids O(n) re-parse on hot paths.
+        # Key: str(path), value: (mtime_ns, size, records).
+        self._read_cache: dict[str, tuple[int, int, list[dict[str, object]]]] = {}
+        self._cache_lock = threading.Lock()
 
     def _get_lock(self, path: Path) -> FileLock:
-        """Get or create a FileLock for the given path."""
+        """Get or create a FileLock for the given path (thread-safe)."""
         key = str(path)
         if key not in self._locks:
-            self._locks[key] = FileLock(key + ".lock", timeout=self._lock_timeout)
+            with self._lock_guard:
+                # Double-checked: another thread may have created it.
+                if key not in self._locks:
+                    self._locks[key] = FileLock(
+                        key + ".lock", timeout=self._lock_timeout,
+                    )
         return self._locks[key]
+
+    def lock(self, path: Path) -> FileLock:
+        """Return the FileLock for *path* (public access for callers that
+        need to wrap broader read-modify-write cycles under the same lock).
+
+        The returned ``FileLock`` is re-entrant within the same thread, so
+        nested ``append`` / ``read_all`` calls inside a ``with writer.lock(p):``
+        block will not deadlock.
+        """
+        return self._get_lock(path)
 
     @staticmethod
     def _rotate_versioned_files(path: Path, max_archives: int) -> None:
@@ -73,7 +103,12 @@ class JSONLWriter:
             path.replace(path.with_suffix(f"{path.suffix}.1"))
 
     def _rotate_if_needed(self, path: Path) -> None:
-        """Rotate the JSONL file when it exceeds max_bytes."""
+        """Rotate the JSONL file when it exceeds max_bytes.
+
+        When ``max_bytes`` is ``None``, rotation is disabled.
+        """
+        if self._max_bytes is None:
+            return
         if not path.exists() or path.stat().st_size < self._max_bytes:
             return
         idx_path = path.with_suffix(".idx")
@@ -250,8 +285,17 @@ class JSONLWriter:
             self.atomic_rewrite(path, new_entries)
             return new_entries
 
+    def _invalidate_cache(self, path: Path) -> None:
+        """Drop the read cache entry for *path*."""
+        with self._cache_lock:
+            self._read_cache.pop(str(path), None)
+
     def read_all(self, path: Path) -> list[dict[str, object]]:
         """Read all valid records from a JSONL file.
+
+        Results are cached by (mtime_ns, size).  Subsequent calls that hit the
+        cache skip JSON parsing entirely.  Callers receive shallow copies of
+        the cached records so mutations do not corrupt the cache.
 
         Args:
             path: Path to the JSONL file.
@@ -261,6 +305,18 @@ class JSONLWriter:
         """
         if not path.exists():
             return []
+
+        st = path.stat()
+        key = str(path)
+
+        with self._cache_lock:
+            cached = self._read_cache.get(key)
+            if cached is not None:
+                c_mtime, c_size, c_records = cached
+                if c_mtime == st.st_mtime_ns and c_size == st.st_size:
+                    return [dict(r) for r in c_records]
+
+        # Cache miss -- parse from disk.
         records: list[dict[str, object]] = []
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -273,4 +329,14 @@ class JSONLWriter:
                         records.append(obj)
                 except json.JSONDecodeError:
                     logger.warning("Skipping corrupted line in %s", path.name)
-        return records
+
+        # Re-stat after parse to store a consistent snapshot.
+        try:
+            st2 = path.stat()
+        except OSError:
+            return records
+
+        with self._cache_lock:
+            self._read_cache[key] = (st2.st_mtime_ns, st2.st_size, records)
+
+        return [dict(r) for r in records]

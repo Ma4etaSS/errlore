@@ -90,6 +90,8 @@ def sanitize_lesson_text(text: str, *, max_len: int = 300) -> str | None:
     Returns:
         Cleaned text, or ``None`` if the input is raw JSON or code-only.
     """
+    # B8: strip BOM (UTF-8 byte-order mark) if present.
+    text = text.lstrip("﻿")
     text = text.strip()
     if not text:
         return None

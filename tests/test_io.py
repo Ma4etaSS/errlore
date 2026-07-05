@@ -6,10 +6,11 @@ import json
 import struct
 import threading
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from errlore.io import JSONLIndex, JSONLWriter, repair_file
+from errlore.io import JSONLIndex, JSONLWriter, repair_directory, repair_file
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -412,3 +413,171 @@ class TestConcurrency:
         for r in records:
             seen.add((r["thread"], r["seq"]))
         assert len(seen) == 4 * n_per_thread
+
+
+# ---------------------------------------------------------------------------
+# A1: Rotation disabled (max_bytes=None)
+# ---------------------------------------------------------------------------
+
+
+class TestRotationDisabled:
+    def test_no_rotation_when_max_bytes_none(self, data_dir: Path) -> None:
+        """Appending past the default limit with max_bytes=None never rotates."""
+        path = data_dir / "no_rotate.jsonl"
+        w = JSONLWriter(max_bytes=None)
+
+        # Write enough to normally trigger rotation at 200 bytes.
+        for i in range(40):
+            w.append(path, {"i": i, "payload": "x" * 50})
+
+        assert path.exists()
+        # No archives should be created.
+        assert not path.with_suffix(".jsonl.1").exists()
+
+        # All records are still accessible.
+        records = w.read_all(path)
+        assert len(records) == 40
+
+    def test_resolve_by_id_after_large_write(self, data_dir: Path) -> None:
+        """Records addressable by ID remain visible after writing past the
+        byte limit when rotation is disabled."""
+        path = data_dir / "ids.jsonl"
+        w = JSONLWriter(max_bytes=None)
+
+        # Write an early record, then write a lot more.
+        early = {"id": "early_record", "data": "important"}
+        w.append(path, early)
+        for i in range(50):
+            w.append(path, {"id": f"filler_{i}", "data": "x" * 100})
+
+        records = w.read_all(path)
+        found = [r for r in records if r.get("id") == "early_record"]
+        assert len(found) == 1
+        assert found[0] == early
+
+
+# ---------------------------------------------------------------------------
+# C1: read_all mtime+size cache
+# ---------------------------------------------------------------------------
+
+
+class TestReadCache:
+    def test_second_read_uses_cache(
+        self, data_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Second read_all hits cache -- no JSON parsing."""
+        path = data_dir / "cached.jsonl"
+        w = JSONLWriter(max_bytes=None)
+        w.append(path, {"x": 1})
+        w.append(path, {"x": 2})
+
+        # First read: populates cache.
+        r1 = w.read_all(path)
+        assert len(r1) == 2
+
+        # Patch json.loads to count calls.
+        import errlore.io.jsonl_writer as wmod
+        real_loads = json.loads
+        counter = MagicMock(side_effect=real_loads)
+        monkeypatch.setattr(wmod.json, "loads", counter)
+
+        # Second read: should hit cache, zero json.loads calls.
+        r2 = w.read_all(path)
+        assert len(r2) == 2
+        assert counter.call_count == 0
+
+    def test_cache_invalidated_after_append(self, data_dir: Path) -> None:
+        """After an append, the next read_all re-parses from disk."""
+        path = data_dir / "inval.jsonl"
+        w = JSONLWriter(max_bytes=None)
+        w.append(path, {"v": 1})
+        r1 = w.read_all(path)
+        assert len(r1) == 1
+
+        w.append(path, {"v": 2})
+        r2 = w.read_all(path)
+        assert len(r2) == 2
+
+    def test_cache_returns_copies(self, data_dir: Path) -> None:
+        """Mutating a returned record does not corrupt the cache."""
+        path = data_dir / "copy.jsonl"
+        w = JSONLWriter(max_bytes=None)
+        w.append(path, {"k": "original"})
+
+        r1 = w.read_all(path)
+        r1[0]["k"] = "mutated"
+
+        r2 = w.read_all(path)
+        assert r2[0]["k"] == "original"
+
+
+# ---------------------------------------------------------------------------
+# C5: Additional repair tests
+# ---------------------------------------------------------------------------
+
+
+class TestRepairExtended:
+    def test_repair_glued_and_garbage_mixed(self, data_dir: Path) -> None:
+        """Glued `}{` plus trailing garbage -> fixed/dropped correct."""
+        path = data_dir / "mixed.jsonl"
+        glued = json.dumps({"a": 1}) + json.dumps({"b": 2})
+        garbage = "not json at all"
+        path.write_text(glued + "\n" + garbage + "\n", encoding="utf-8")
+
+        stats = repair_file(path)
+        assert stats.fixed >= 2  # glued records separated
+        assert stats.dropped >= 1  # garbage line dropped
+
+        w = JSONLWriter()
+        records = w.read_all(path)
+        keys = {next(iter(r.keys())) for r in records}
+        assert "a" in keys
+        assert "b" in keys
+
+    def test_repair_directory_recursive(self, data_dir: Path) -> None:
+        """repair_directory with recursive=True finds nested files."""
+        sub = data_dir / "sub"
+        sub.mkdir()
+        p1 = data_dir / "top.jsonl"
+        p2 = sub / "nested.jsonl"
+
+        p1.write_text(json.dumps({"ok": 1}) + "\n", encoding="utf-8")
+        glued = json.dumps({"x": 1}) + json.dumps({"y": 2}) + "\n"
+        p2.write_text(glued, encoding="utf-8")
+
+        results = repair_directory(data_dir, recursive=True)
+        assert len(results) >= 2
+        nested_key = str(p2)
+        assert nested_key in results
+        assert results[nested_key].fixed >= 2
+
+    def test_repair_dry_run_no_change(self, data_dir: Path) -> None:
+        """dry_run=True does not modify the file."""
+        path = data_dir / "dry.jsonl"
+        glued = json.dumps({"a": 1}) + json.dumps({"b": 2}) + "\n"
+        path.write_text(glued, encoding="utf-8")
+        original = path.read_bytes()
+
+        stats = repair_file(path, dry_run=True)
+        assert stats.fixed >= 2
+        assert path.read_bytes() == original
+
+    def test_verify_integrity_corrupt_idx_then_rebuild(self, data_dir: Path) -> None:
+        """Corrupted .idx fails verify, rebuild fixes it."""
+        path = data_dir / "bad_idx.jsonl"
+        w = JSONLWriter()
+        entries: list[dict[str, object]] = [{"v": i} for i in range(3)]
+        w.append_batch(path, entries)
+
+        idx = JSONLIndex(path)
+        # Write garbage to .idx
+        idx.idx_path.write_bytes(b"\xff" * 40)
+
+        is_valid, errors = idx.verify_integrity()
+        assert not is_valid
+        assert len(errors) > 0
+
+        # Rebuild should fix it.
+        idx.rebuild()
+        is_valid2, errors2 = idx.verify_integrity()
+        assert is_valid2, f"Errors after rebuild: {errors2}"

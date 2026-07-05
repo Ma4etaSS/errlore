@@ -83,8 +83,9 @@ class FeedbackSignal:
             raise ValueError(f"outcome must be in [0, 1], got {self.outcome}")
         if not -1.0 <= self.disagreement <= 1.0:
             raise ValueError(f"disagreement must be in [-1, 1], got {self.disagreement}")
-        if self.weight < 0.0:
-            raise ValueError(f"weight must be >= 0, got {self.weight}")
+        # B9: reject NaN / inf for weight.
+        if not (0.0 <= self.weight < float("inf")):
+            raise ValueError(f"weight must be >= 0 and finite, got {self.weight}")
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +471,24 @@ class TrustEngine:
     # Persistence
     # ------------------------------------------------------------------
 
+    def _write_state_locked(self, state: dict[str, Any]) -> None:
+        """Write *state* dict to disk via tmp + os.replace (caller holds lock)."""
+        if self.state_path is None:
+            return
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        data = json.dumps(state, indent=2, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(
+            dir=self.state_path.parent, suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+            os.replace(tmp, str(self.state_path))
+        except (OSError, TypeError, ValueError):
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+
     def save(self) -> None:
         """Persist full engine state to disk (atomic write)."""
         if self.state_path is None:
@@ -477,19 +496,7 @@ class TrustEngine:
         try:
             with self._lock:
                 state = self._serialize()
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            data = json.dumps(state, indent=2, ensure_ascii=False)
-            fd, tmp = tempfile.mkstemp(
-                dir=self.state_path.parent, suffix=".tmp"
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(data)
-                os.replace(tmp, str(self.state_path))
-            except (OSError, TypeError, ValueError):
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp)
-                raise
+                self._write_state_locked(state)
             logger.debug("State saved to %s", self.state_path)
         except (OSError, TypeError, ValueError) as exc:
             logger.warning("Save failed: %s", exc, exc_info=True)
@@ -526,9 +533,41 @@ class TrustEngine:
         }
 
     def _restore(self, path: Path) -> None:
-        """Restore state from a JSON file."""
+        """Restore state from a JSON file.
+
+        B10: weights read from disk are validated through ``float()`` and
+        clamped to ``[floor, cap]``.  Non-numeric values cause the model
+        to be skipped with a warning.
+        """
         raw = json.loads(path.read_text(encoding="utf-8"))
-        self._models = raw.get("models", {})
+
+        # B10: validate and clamp restored weights.
+        restored_models: dict[str, dict[str, float]] = {}
+        for m, domains in raw.get("models", {}).items():
+            if not isinstance(domains, dict):
+                logger.warning("Skipping model %s: domains is not a dict", m)
+                continue
+            cleaned: dict[str, float] = {}
+            for domain, w in domains.items():
+                try:
+                    fw = float(w)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Skipping model %s domain %s: non-numeric weight %r",
+                        m, domain, w,
+                    )
+                    continue
+                if math.isnan(fw) or math.isinf(fw):
+                    logger.warning(
+                        "Skipping model %s domain %s: weight is %r",
+                        m, domain, fw,
+                    )
+                    continue
+                cleaned[domain] = max(self.floor, min(self.cap, fw))
+            if cleaned:
+                restored_models[m] = cleaned
+        self._models = restored_models
+
         self._bias_history = raw.get("bias_history", [])
         for m, domains in raw.get("task_counts", {}).items():
             for domain, count in domains.items():
@@ -550,17 +589,14 @@ class TrustEngine:
             self._persist_no_lock()
 
     def _persist_no_lock(self) -> None:
-        """Lightweight persist (models + timestamp only), no lock needed."""
+        """Periodic persist of FULL state via atomic write.
+
+        Called from ``_maybe_persist`` which runs inside ``_lock``.
+        """
         if self.state_path is None:
             return
         try:
-            state = {
-                "models": {m: dict(d) for m, d in self._models.items()},
-                "updated_at": time.time(),
-            }
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(
-                json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            state = self._serialize()
+            self._write_state_locked(state)
         except (OSError, TypeError, ValueError) as exc:
             logger.debug("Periodic persist failed: %s", exc, exc_info=True)

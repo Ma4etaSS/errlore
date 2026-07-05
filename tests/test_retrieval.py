@@ -214,6 +214,36 @@ class TestVectorIndexPersist:
         assert "L1" not in idx2
 
 
+class TestVectorIndexCorruptLoad:
+    """B5: corrupted on-disk files do not crash the constructor."""
+
+    def test_corrupt_vectors_npy(self, data_dir: Path, fake_backend: CallableBackend) -> None:
+        """Corrupted vectors.npy -> empty index, no exception."""
+        # Write a valid index first.
+        idx1 = VectorIndex(data_dir, fake_backend)
+        idx1.add("L1", "api timeout")
+        assert len(idx1) == 1
+
+        # Corrupt vectors.npy
+        vectors_path = data_dir / "vectors.npy"
+        vectors_path.write_bytes(b"this is not a numpy file")
+
+        # Re-open: should not raise, just produce empty index.
+        idx2 = VectorIndex(data_dir, fake_backend)
+        assert len(idx2) == 0
+
+    def test_corrupt_meta_json(self, data_dir: Path, fake_backend: CallableBackend) -> None:
+        """Corrupted vector_meta.json -> empty index, no exception."""
+        idx1 = VectorIndex(data_dir, fake_backend)
+        idx1.add("L1", "api timeout")
+
+        meta_path = data_dir / "vector_meta.json"
+        meta_path.write_text("{invalid json", encoding="utf-8")
+
+        idx2 = VectorIndex(data_dir, fake_backend)
+        assert len(idx2) == 0
+
+
 class TestVectorIndexReindex:
     """Model change triggers reindex."""
 

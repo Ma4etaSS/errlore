@@ -109,48 +109,52 @@ def repair_file(
                 idx.idx_path.unlink()
         return stats
 
-    try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        logger.error("Cannot read %s: %s", path, exc)
-        return stats
+    w = writer or JSONLWriter()
 
-    for line_bytes in raw.split(b"\n"):
-        stats.total_lines += 1
+    # A3: hold the file lock for the entire read -> parse -> rewrite cycle
+    # so that concurrent appends are not lost between read and rewrite.
+    with w.lock(path):
         try:
-            line = line_bytes.decode("utf-8").strip()
-        except UnicodeDecodeError:
-            stats.dropped += 1
-            continue
+            raw = path.read_bytes()
+        except OSError as exc:
+            logger.error("Cannot read %s: %s", path, exc)
+            return stats
 
-        if not line:
-            continue
-
-        parsed = _try_parse(line)
-        if not parsed:
-            stats.dropped += 1
-            continue
-
-        if len(parsed) == 1:
-            # Single JSON per line
+        for line_bytes in raw.split(b"\n"):
+            stats.total_lines += 1
             try:
-                json.loads(line)
-                stats.ok += 1
-            except json.JSONDecodeError:
-                stats.fixed += 1
-        else:
-            # Glued records separated
-            stats.fixed += len(parsed)
+                line = line_bytes.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                stats.dropped += 1
+                continue
 
-        repaired.extend(parsed)
+            if not line:
+                continue
 
-    if not dry_run and (stats.fixed > 0 or stats.dropped > 0):
-        w = writer or JSONLWriter()
-        w.atomic_rewrite(path, repaired)
+            parsed = _try_parse(line)
+            if not parsed:
+                stats.dropped += 1
+                continue
 
-    if not dry_run:
-        idx = JSONLIndex(path)
-        stats.index_rebuilt = idx.rebuild()
+            if len(parsed) == 1:
+                # Single JSON per line
+                try:
+                    json.loads(line)
+                    stats.ok += 1
+                except json.JSONDecodeError:
+                    stats.fixed += 1
+            else:
+                # Glued records separated
+                stats.fixed += len(parsed)
+
+            repaired.extend(parsed)
+
+        if not dry_run and (stats.fixed > 0 or stats.dropped > 0):
+            w.atomic_rewrite(path, repaired)
+
+        if not dry_run:
+            idx = JSONLIndex(path)
+            stats.index_rebuilt = idx.rebuild()
 
     return stats
 

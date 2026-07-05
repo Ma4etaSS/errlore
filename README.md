@@ -144,6 +144,8 @@ you only need them for advanced use.
 | `resolve(err_id, resolution, lesson)` | Mark error fixed, extract a lesson.    |
 | `inject_for(task, model)`     | Build prompt injection (lessons + warnings).   |
 | `report_outcome(inj, success)` | Close the loop: reinforce lessons, update trust.|
+| `add_lesson(pattern, solution)` | Add a lesson directly (sanitized).            |
+| `lessons(limit)`              | List all lessons (sorted by confidence).       |
 | `best_model(domain)`          | Model with the highest trust weight.           |
 | `model_penalty(model, task_type)` | Error-history penalty `[0, 1]`.            |
 | `pending_injections()`        | Injections not yet reported.                   |
@@ -166,9 +168,13 @@ you only need them for advanced use.
 - Works fully offline -- no API keys, no accounts, no telemetry.
 - Files: `errors.jsonl`, `lessons.jsonl`, `injections.jsonl`, `trust.json`,
   `model_accuracy.jsonl`.
+- Sidecar files (auto-managed): `*.idx` (byte-offset index), `*.lock`
+  (filelock), `vectors.npy` (embedding vectors), `vector_meta.json`
+  (embedding metadata), `trust.json` (trust engine state).
 
 ## Roadmap
 
+- [ ] Log compaction for injections journal
 - [ ] Async API (`alog_error`, `ainject_for`, etc.)
 - [ ] Multi-agent shared memory (multiple agents, one lesson store)
 - [ ] Lesson clustering and auto-summarization

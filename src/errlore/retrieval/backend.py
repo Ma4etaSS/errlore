@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -41,7 +42,17 @@ class FastEmbedBackend:
                 "fastembed is required for embedding-based retrieval.  "
                 "Install it with:  pip install errlore[embeddings]"
             ) from None
-        self._model = TextEmbedding(self._model_name)
+        # C3: suppress the known "now uses mean pooling instead of CLS"
+        # UserWarning emitted by fastembed >= 0.6 for models that changed
+        # their default pooling strategy.  The warning is informational
+        # and cannot be acted upon without pinning to an older version.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*mean pooling instead of CLS.*",
+                category=UserWarning,
+            )
+            self._model = TextEmbedding(self._model_name)
         # Probe dimensionality.
         probe = list(self._model.embed(["_dim_probe_"]))
         self._dim = len(probe[0])

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from errlore.io import JSONLWriter
-from errlore.lessons.models import ErrorRecord, Lesson
+from errlore.lessons.models import ErrorRecord, Lesson, _utc_now_iso
 
 if TYPE_CHECKING:
     from errlore.retrieval import LessonRetriever
@@ -45,7 +45,10 @@ class LessonStore:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._errors_path = self._data_dir / "errors.jsonl"
         self._lessons_path = self._data_dir / "lessons.jsonl"
-        self._writer = JSONLWriter()
+        # A1: rotation disabled -- these files use ID-based lookups, so all
+        # records must remain visible.  Growth will be managed by future
+        # log compaction.
+        self._writer = JSONLWriter(max_bytes=None)
         self._lock = threading.Lock()
         self._retriever = retriever
 
@@ -147,6 +150,11 @@ class LessonStore:
             logger.debug("resolve_error: error_id=%s not found", error_id)
             return False
         if already_resolved:
+            # B11: warn if caller passed a lesson for an already-resolved error.
+            if lesson:
+                logger.warning(
+                    "lesson ignored: error %s already resolved", error_id,
+                )
             logger.debug("resolve_error: error_id=%s already resolved", error_id)
             return True
 
@@ -375,8 +383,6 @@ class LessonStore:
         Returns:
             True if the lesson was found and updated, False otherwise.
         """
-        from errlore.lessons.models import _utc_now_iso
-
         # Race-safe read-modify-write under one file lock (see resolve_error).
         target: Lesson | None = None
 
@@ -423,8 +429,6 @@ class LessonStore:
         Returns:
             Number of lessons that were decayed.
         """
-        from errlore.lessons.models import _utc_now_iso
-
         decayed_count = 0
 
         def _apply(

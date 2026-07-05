@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from errlore.trust import FeedbackSignal, TrustEngine, enforce_entropy
+from errlore.trust import FeedbackSignal, TrustEngine
+from errlore.trust.engine import enforce_entropy
 
 # ---------------------------------------------------------------------------
 # REGRESSION: monotonic growth bug
@@ -231,6 +232,30 @@ class TestPersistence:
         engine.update("m", FeedbackSignal(outcome=0.8))
         engine.save()  # should be a no-op
 
+    def test_restore_clamps_corrupted_weights(self, tmp_path: Path) -> None:
+        """B10: non-numeric / out-of-range weights are handled gracefully."""
+        state_file = tmp_path / "corrupt.json"
+        state_file.write_text(json.dumps({
+            "models": {
+                "good": {"general": 0.7},
+                "nan_model": {"general": "not_a_number"},
+                "inf_model": {"general": float("inf")},
+                "low_model": {"general": 0.01},
+            },
+        }), encoding="utf-8")
+
+        engine = TrustEngine.load(state_file, cap=0.92, floor=0.1)
+
+        # good: clamped to [floor, cap] -- 0.7 is in range
+        assert engine.get_weight("good") == pytest.approx(0.7)
+        # nan_model: skipped entirely (non-numeric)
+        from errlore.trust.engine import DEFAULT_WEIGHT
+        assert engine.get_weight("nan_model") == DEFAULT_WEIGHT
+        # inf_model: skipped (inf)
+        assert engine.get_weight("inf_model") == DEFAULT_WEIGHT
+        # low_model: clamped to floor
+        assert engine.get_weight("low_model") == pytest.approx(0.1)
+
     def test_persisted_file_is_valid_json(self, tmp_path: Path) -> None:
         state_file = tmp_path / "state.json"
         engine = TrustEngine(state_path=state_file, domains=("general",))
@@ -363,6 +388,17 @@ class TestFeedbackSignalValidation:
     def test_negative_weight(self) -> None:
         with pytest.raises(ValueError, match="weight"):
             FeedbackSignal(outcome=0.5, weight=-1.0)
+
+    def test_nan_weight_rejected(self) -> None:
+        """B9: NaN weight is rejected."""
+        import math
+        with pytest.raises(ValueError, match="weight"):
+            FeedbackSignal(outcome=0.5, weight=math.nan)
+
+    def test_inf_weight_rejected(self) -> None:
+        """B9: inf weight is rejected."""
+        with pytest.raises(ValueError, match="weight"):
+            FeedbackSignal(outcome=0.5, weight=float("inf"))
 
 
 # ---------------------------------------------------------------------------

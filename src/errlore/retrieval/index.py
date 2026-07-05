@@ -55,15 +55,36 @@ class VectorIndex:
     # ------------------------------------------------------------------
 
     def _load(self) -> None:
-        """Load persisted vectors and metadata from disk."""
+        """Load persisted vectors and metadata from disk.
+
+        Corrupt or unreadable files are treated as an empty index with a
+        warning -- the index will be rebuilt incrementally on the next
+        ``add`` / ``add_batch`` call from :class:`LessonStore`.
+        """
         if not self._meta_path.exists() or not self._vectors_path.exists():
             return
 
-        with open(self._meta_path, encoding="utf-8") as f:
-            meta: dict[str, object] = json.load(f)
+        try:
+            with open(self._meta_path, encoding="utf-8") as f:
+                meta: dict[str, object] = json.load(f)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            logger.warning("Cannot read vector metadata %s: %s", self._meta_path, exc)
+            return
 
         stored_model = meta.get("model_id")
         stored_dim = meta.get("dim")
+
+        # B5-ext: fastembed version mismatch triggers rebuild.
+        stored_fe_version = meta.get("fastembed_version")
+        active_fe_version = self._get_fastembed_version()
+        if stored_fe_version is not None and stored_fe_version != active_fe_version:
+            logger.warning(
+                "fastembed version mismatch (stored=%s, active=%s); "
+                "index will be rebuilt on next sync",
+                stored_fe_version,
+                active_fe_version,
+            )
+            return
 
         if stored_model != self._backend.model_id or stored_dim != self._backend.dim:
             logger.warning(
@@ -78,7 +99,12 @@ class VectorIndex:
 
         raw_ids = meta.get("ids")
         ids: list[str] = [str(x) for x in raw_ids] if isinstance(raw_ids, list) else []
-        arr: np.ndarray = np.load(self._vectors_path)
+
+        try:
+            arr: np.ndarray = np.load(self._vectors_path)
+        except (OSError, ValueError, EOFError) as exc:
+            logger.warning("Cannot read vectors %s: %s", self._vectors_path, exc)
+            return
 
         if len(ids) != len(arr):
             logger.warning(
@@ -92,12 +118,24 @@ class VectorIndex:
         self._id_set = set(ids)
         self._vectors = arr.astype(np.float32) if len(arr) > 0 else None
 
+    @staticmethod
+    def _get_fastembed_version() -> str:
+        """Return fastembed major.minor version, or ``"unknown"``."""
+        try:
+            from importlib.metadata import version as pkg_version
+            full = pkg_version("fastembed")
+            parts = full.split(".")
+            return ".".join(parts[:2]) if len(parts) >= 2 else full
+        except Exception:
+            return "unknown"
+
     def _save(self) -> None:
         """Persist vectors and metadata atomically (tmp + replace)."""
         meta: dict[str, object] = {
             "ids": self._ids,
             "model_id": self._backend.model_id,
             "dim": self._backend.dim,
+            "fastembed_version": self._get_fastembed_version(),
         }
 
         # -- atomic metadata write ----------------------------------------

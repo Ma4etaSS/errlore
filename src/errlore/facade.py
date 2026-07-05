@@ -103,8 +103,9 @@ class AgentMemory:
         self._decay_every = decay_every
         self._decay_counter = 0
 
-        # Shared writer for injections.jsonl.
-        self._writer = JSONLWriter()
+        # Shared writer for injections.jsonl -- rotation disabled because
+        # injections are addressed by handle_id and must remain visible.
+        self._writer = JSONLWriter(max_bytes=None)
         self._injections_path = self._data_dir / "injections.jsonl"
 
         # Subsystems.
@@ -369,13 +370,25 @@ class AgentMemory:
 
         Raises:
             KeyError: If the handle_id is unknown.
+            ValueError: If *outcome* is outside ``[0, 1]`` or NaN.
         """
+        # A4: validate outcome BEFORE any side effects.
+        if outcome is not None:
+            import math
+            if math.isnan(outcome) or not (0.0 <= outcome <= 1.0):
+                raise ValueError(
+                    f"outcome must be in [0, 1] and not NaN, got {outcome}"
+                )
+
         if isinstance(inj_or_handle_id, Injection):
             handle_id = inj_or_handle_id.handle_id
         else:
             handle_id = inj_or_handle_id
 
-        with self._report_lock:
+        # A2: cross-process file lock wraps the entire check -> reinforce ->
+        # trust -> append path, preventing two processes from doubling up.
+        # The threading lock is kept outside as an additional in-process gate.
+        with self._report_lock, self._writer.lock(self._injections_path):
             events = self._writer.read_all(self._injections_path)
 
             # Find the issued event.
@@ -438,6 +451,60 @@ class AgentMemory:
             )
 
         return True
+
+    # ------------------------------------------------------------------
+    # Lesson convenience API
+    # ------------------------------------------------------------------
+
+    def add_lesson(
+        self,
+        pattern: str,
+        solution: str,
+        *,
+        task_type: str = "",
+        confidence: float = 0.8,
+    ) -> str | None:
+        """Add a lesson directly (without an error/resolve cycle).
+
+        The *pattern* is sanitized via
+        :func:`~errlore.sanitize.sanitize_lesson_text`.  If sanitization
+        rejects the text, ``None`` is returned and no lesson is stored.
+
+        Args:
+            pattern: Problem pattern description.
+            solution: How to fix / avoid the problem.
+            task_type: Optional task category for narrower search later.
+            confidence: Initial confidence (default 0.8).
+
+        Returns:
+            Lesson ID, or ``None`` if the pattern was rejected by the sanitizer.
+        """
+        sanitized = sanitize_lesson_text(pattern)
+        if sanitized is None:
+            logger.warning("add_lesson: pattern rejected by sanitizer")
+            return None
+        return self._store.log_lesson(
+            pattern=sanitized,
+            solution=solution,
+            task_type=task_type,
+            confidence=confidence,
+        )
+
+    def lessons(self, limit: int | None = None) -> list[Any]:
+        """Return all lessons, optionally capped at *limit*.
+
+        Args:
+            limit: Maximum number of lessons to return (newest first by
+                confidence). ``None`` returns all.
+
+        Returns:
+            List of :class:`~errlore.lessons.models.Lesson` objects.
+        """
+        all_lessons = self._store._read_lessons()
+        all_lessons.sort(key=lambda le: le.confidence, reverse=True)
+        if limit is not None:
+            return all_lessons[:limit]
+        return all_lessons
 
     # ------------------------------------------------------------------
     # Queries

@@ -348,3 +348,101 @@ def test_trust_property_accessible(data_dir: Path) -> None:
 
     mem_without = AgentMemory(data_dir / "no_trust", trust=False)
     assert mem_without.trust is None
+
+
+# ===================================================================
+# A2: Cross-process idempotent report_outcome
+# ===================================================================
+
+
+def test_two_instances_report_outcome_once(data_dir: Path) -> None:
+    """Two AgentMemory instances on the same data_dir: only one reinforce."""
+    mem1 = AgentMemory(data_dir)
+    err_id = mem1.log_error("gpt-4o", "task", "SomeError: test")
+    mem1.resolve(err_id, "fixed", lesson="Lesson for cross-process test")
+    inj = mem1.inject_for("task", "gpt-4o", task_type="task")
+
+    mem2 = AgentMemory(data_dir)
+
+    # Both try to report the same handle.
+    r1 = mem1.report_outcome(inj.handle_id, success=True)
+    r2 = mem2.report_outcome(inj.handle_id, success=True)
+
+    # Exactly one succeeds.
+    assert r1 is True
+    assert r2 is False
+
+    # Lesson reinforced exactly once.
+    lessons = mem1._store.search_lessons(task_type="task")
+    assert lessons[0].applied_count == 1
+
+
+# ===================================================================
+# A4: Validate outcome before side effects
+# ===================================================================
+
+
+def test_invalid_outcome_raises_before_reinforce(data_dir: Path) -> None:
+    """outcome=2.5 -> ValueError; applied_count unchanged, no reported event."""
+    mem = AgentMemory(data_dir)
+    err_id = mem.log_error("gpt-4o", "task", "SomeError: test")
+    mem.resolve(err_id, "fixed", lesson="Lesson for validation test")
+    inj = mem.inject_for("task", "gpt-4o", task_type="task")
+
+    with pytest.raises(ValueError, match="outcome"):
+        mem.report_outcome(inj, success=True, outcome=2.5)
+
+    # No side effects occurred.
+    lessons = mem._store.search_lessons(task_type="task")
+    assert lessons[0].applied_count == 0
+
+    # No "reported" event written.
+    events = mem._writer.read_all(mem._injections_path)
+    reported = [e for e in events if e.get("event") == "reported"]
+    assert len(reported) == 0
+
+
+def test_nan_outcome_raises(data_dir: Path) -> None:
+    """NaN outcome raises ValueError."""
+    import math
+    mem = AgentMemory(data_dir)
+    inj = mem.inject_for("task", "model")
+    with pytest.raises(ValueError, match="outcome"):
+        mem.report_outcome(inj, success=True, outcome=math.nan)
+
+
+# ===================================================================
+# C4: add_lesson / lessons convenience API
+# ===================================================================
+
+
+def test_add_lesson_and_list(data_dir: Path) -> None:
+    """add_lesson stores a lesson; lessons() returns it."""
+    mem = AgentMemory(data_dir)
+    lid = mem.add_lesson(
+        "Always validate input before sending to LLM",
+        "Use pydantic BaseModel",
+        task_type="validation",
+    )
+    assert lid is not None
+
+    all_lessons = mem.lessons()
+    assert len(all_lessons) == 1
+    assert all_lessons[0].id == lid
+
+
+def test_add_lesson_rejects_junk(data_dir: Path) -> None:
+    """add_lesson returns None for raw JSON patterns."""
+    mem = AgentMemory(data_dir)
+    result = mem.add_lesson('{"key": "value"}', "no solution needed")
+    assert result is None
+    assert len(mem.lessons()) == 0
+
+
+def test_lessons_limit(data_dir: Path) -> None:
+    """lessons(limit=N) returns at most N lessons."""
+    mem = AgentMemory(data_dir)
+    for i in range(5):
+        mem.add_lesson(f"Unique pattern number {i} for limiting", f"Solution {i}")
+    assert len(mem.lessons(limit=3)) == 3
+    assert len(mem.lessons()) == 5

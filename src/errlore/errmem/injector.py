@@ -24,6 +24,7 @@ def sanitize_description(text: str) -> str | None:
 
     Rules:
         - Strip to ``_MAX_DESCRIPTION_LEN`` characters.
+        - Collapse runs of whitespace into a single space.
         - If the text looks like raw JSON (starts with ``{`` or backticks),
           try to extract a readable ``"message"`` / ``"error"`` field;
           otherwise discard the entry entirely (return ``None``).
@@ -43,6 +44,9 @@ def sanitize_description(text: str) -> str | None:
         if extracted is None:
             return None
         text = extracted
+
+    # B8: collapse whitespace (consistent with sanitize.py).
+    text = re.sub(r"\s+", " ", text).strip()
 
     if len(text) > _MAX_DESCRIPTION_LEN:
         text = text[: _MAX_DESCRIPTION_LEN - 3] + "..."
@@ -93,6 +97,12 @@ class WarningInjector:
         Returns:
             Warning string, or ``""`` if there is nothing to report.
         """
+        # C2: single read of model_accuracy.jsonl instead of two separate
+        # calls (get_model_weaknesses + get_errors_for_task_type each did
+        # a full file read).  The tracker's _read_all is now cached via
+        # JSONLWriter.read_all mtime+size cache, so the second call hits
+        # the cache automatically.  No API change needed -- the cache in
+        # JSONLWriter handles this transparently.
         weaknesses = self._tracker.get_model_weaknesses(model)
         past_errors = self._tracker.get_errors_for_task_type(task_type)
 
