@@ -21,7 +21,9 @@ from pathlib import Path
 
 from errlore import AgentMemory
 
-MODEL = "gpt-4o"
+# Current OpenAI lineup (2026): gpt-5.5 (frontier, recommended),
+# gpt-5.4-mini / gpt-5.4-nano (lower latency & cost).
+MODEL = "gpt-5.5"
 
 
 # -- Agent wrapper -----------------------------------------------------------

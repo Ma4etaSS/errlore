@@ -21,6 +21,9 @@ from pathlib import Path
 
 from errlore import AgentMemory
 
+# Current Claude lineup (2026): claude-fable-5 (most capable),
+# claude-opus-4-8 (recommended default), claude-sonnet-4-6 (speed/cost balance),
+# claude-haiku-4-5 (fastest). Use exact IDs as-is -- no date suffixes.
 MODEL = "claude-opus-4-8"
 
 

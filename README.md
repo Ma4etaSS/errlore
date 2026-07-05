@@ -12,7 +12,7 @@ Your agent keeps making the same mistakes. errlore fixes that:
 
 - **Lessons** -- every resolved failure becomes a lesson; relevant lessons are injected
   into the prompt for similar future tasks.
-- **Known issues** -- per-model weakness tracking ("gpt-4o keeps hallucinating dates in
+- **Known issues** -- per-model weakness tracking ("gpt-5.5 keeps hallucinating dates in
   extraction tasks") injected as warnings.
 - **Trust** -- Bayesian per-model, per-domain trust weights: know which model to pick
   for which job, based on observed outcomes.
@@ -34,14 +34,14 @@ from errlore import AgentMemory
 mem = AgentMemory("./agent_memory")
 
 # 1. Agent failed -- record it
-err_id = mem.log_error("gpt-4o", "extraction", error="hallucinated dates")
+err_id = mem.log_error("gpt-5.5", "extraction", error="hallucinated dates")
 
 # 2. You fixed it -- extract a lesson
 mem.resolve(err_id, "Added date format validation",
             lesson="For date extraction, demand ISO-8601 and verify against source")
 
 # 3. Next similar task -- lessons + known issues injected automatically
-inj = mem.inject_for("extract dates from contract", model="gpt-4o",
+inj = mem.inject_for("extract dates from contract", model="gpt-5.5",
                       task_type="extraction")
 prompt = f"Your task: extract dates\n{inj.text}"
 print(prompt)
@@ -53,7 +53,7 @@ mem.report_outcome(inj, success=True)
 print(mem.stats())
 # {'errors_total': 1, 'errors_resolved': 1, 'errors_unresolved': 0,
 #  'lessons_total': 1, 'lessons_applied': 1, 'pending_injections': 0,
-#  'trust': {'gpt-4o': 0.55}}
+#  'trust': {'gpt-5.5': 0.55}}
 ```
 
 No API keys needed. errlore itself never calls any LLM -- it manages local
