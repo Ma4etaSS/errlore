@@ -15,9 +15,8 @@ Two functions work as a pair:
 
 1. Open WebUI → **Admin Panel → Functions → Import / New**.
 2. Paste `errlore_memory_filter.py`, save. Repeat for `errlore_feedback_action.py`.
-3. The `requirements: errlore` frontmatter installs the library automatically.
-   Until errlore is on PyPI, replace the requirements line with:
-   `requirements: errlore`
+3. The `requirements: errlore` frontmatter installs the library automatically
+   from PyPI (https://pypi.org/project/errlore/).
 4. Enable the Filter globally (or per-model) and the Action.
 
 Both functions share one data directory (`data_dir` valve, default
