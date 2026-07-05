@@ -308,3 +308,43 @@ def test_injection_dataclass_fields(data_dir: Path) -> None:
     assert inj.model == "model"
     assert inj.domain == "code"
     assert inj.created_at  # non-empty ISO timestamp
+
+
+def test_best_model_returns_highest_trust(data_dir: Path) -> None:
+    """best_model returns the model with the highest trust weight."""
+    mem = AgentMemory(data_dir)
+
+    # Seed two models with different outcomes
+    err1 = mem.log_error("model-a", "task", error="bad")
+    mem.resolve(err1, "fixed")
+    inj1 = mem.inject_for("task", "model-a")
+    mem.report_outcome(inj1, success=True)
+
+    err2 = mem.log_error("model-b", "task", error="bad")
+    mem.resolve(err2, "fixed")
+    inj2 = mem.inject_for("task", "model-b")
+    mem.report_outcome(inj2, success=False)
+
+    best = mem.best_model()
+    assert best == "model-a"
+
+
+def test_best_model_none_when_trust_disabled(data_dir: Path) -> None:
+    """best_model returns None when trust is disabled."""
+    mem = AgentMemory(data_dir, trust=False)
+    assert mem.best_model() is None
+
+
+def test_best_model_none_when_no_models(data_dir: Path) -> None:
+    """best_model returns None when no models registered."""
+    mem = AgentMemory(data_dir)
+    assert mem.best_model() is None
+
+
+def test_trust_property_accessible(data_dir: Path) -> None:
+    """trust property exposes TrustEngine or None."""
+    mem_with = AgentMemory(data_dir)
+    assert mem_with.trust is not None
+
+    mem_without = AgentMemory(data_dir / "no_trust", trust=False)
+    assert mem_without.trust is None

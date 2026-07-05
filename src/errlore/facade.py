@@ -503,3 +503,28 @@ class AgentMemory:
             Penalty score in ``[0.0, 1.0]``.
         """
         return self._injector.get_penalty(model, task_type)
+
+    @property
+    def trust(self) -> TrustEngine | None:
+        """Access the underlying TrustEngine (None when trust=False)."""
+        return self._trust
+
+    def best_model(self, domain: str = "general") -> str | None:
+        """Return the model with the highest trust weight for a domain.
+
+        Useful for routing: pick the model that historically performs best
+        on a given task domain, based on accumulated outcome signals.
+
+        Args:
+            domain: Trust domain (default ``"general"``).
+
+        Returns:
+            Model name with the highest weight, or None if no models are
+            registered or trust is disabled.
+        """
+        if self._trust is None:
+            return None
+        weights = self._trust.get_weights(domain)
+        if not weights:
+            return None
+        return max(weights, key=weights.get)  # type: ignore[arg-type]
