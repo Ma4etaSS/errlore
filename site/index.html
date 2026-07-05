@@ -98,8 +98,11 @@
   <p class="sub">A memory layer for AI agents that learns from failures: every resolved
   error becomes a lesson, lessons are injected into future prompts, and Bayesian trust
   weights track which model to believe for which job.</p>
-  <div class="pip"><span class="dollar">$</span> pip install errlore</div>
-  <div class="cta-row">MIT · zero required dependencies beyond filelock · works fully offline</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:36px">
+    <div class="pip" style="margin-top:0"><span class="dollar">$</span> pip install errlore</div>
+    <a href="https://github.com/Ma4etaSS/errlore" style="display:inline-block;border:1px solid var(--gold-dim);border-radius:8px;padding:14px 22px;font-family:var(--mono);font-size:15px;color:var(--gold)">View on GitHub &rarr;</a>
+  </div>
+  <div class="cta-row">MIT &middot; Python 3.12+ &middot; 186 tests &middot; CI passing &middot; offline &middot; no telemetry &middot; JSONL, file-locked</div>
 </header>
 
 <div class="story">
@@ -109,6 +112,10 @@
   errlore is that one part, extracted, fixed, and finished.
   <span class="who">— why this library exists</span>
 </div>
+
+<section style="padding-top:0">
+  <div class="term" style="margin:0 0 8px"><pre style="text-align:center;color:var(--dim)">error <span class="c-kw">&rarr;</span> your fix <span class="c-kw">&rarr;</span> <span class="c-str">lesson</span> <span class="c-kw">&rarr;</span> injected into next similar prompt <span class="c-kw">&rarr;</span> outcome feedback <span class="c-kw">&rarr;</span> <span class="c-str">trust update</span></pre></div>
+</section>
 
 <section>
   <h2>Three loops, all closed</h2>
@@ -186,6 +193,28 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
     <div class="card"><h3>Python SDKs</h3><p>Working examples for the OpenAI SDK,
     Anthropic SDK, and LangChain in <span class="mono">examples/</span> — each runnable
     offline, each showing the full learn-inject-reinforce cycle.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Why not just logs or vector memory?</h2>
+  <table>
+    <tr><th></th><th>plain logs</th><th>vector memory</th><th>errlore</th></tr>
+    <tr><td class="mono">stores failures</td><td>yes</td><td>sometimes</td><td><b>yes</b></td></tr>
+    <tr><td class="mono">turns them into lessons</td><td class="zero">no</td><td class="zero">no</td><td><b>yes</b></td></tr>
+    <tr><td class="mono">injects into future prompts</td><td class="zero">no</td><td>retrieval only</td><td><b>yes, with feedback loop</b></td></tr>
+    <tr><td class="mono">knows if a lesson helped</td><td class="zero">no</td><td class="zero">no</td><td><b>reinforce / decay</b></td></tr>
+    <tr><td class="mono">tracks per-model weaknesses</td><td class="zero">no</td><td class="zero">no</td><td><b>KNOWN ISSUES + trust</b></td></tr>
+    <tr><td class="mono">works offline, no server</td><td>yes</td><td>depends</td><td><b>yes</b></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Where it earns its keep</h2>
+  <div class="loops">
+    <div class="loop"><h3><span class="n">&rsaquo;</span>Coding agents</h3><p>that keep re-introducing the same class of bug across sessions.</p></div>
+    <div class="loop"><h3><span class="n">&rsaquo;</span>Extraction pipelines</h3><p>that hallucinate dates, numbers and schema fields the same way every week.</p></div>
+    <div class="loop"><h3><span class="n">&rsaquo;</span>Multi-model routing</h3><p>pick the model per task from observed outcomes &mdash; <span class="mono">mem.best_model("code")</span> &mdash; not vibes.</p></div>
   </div>
 </section>
 
