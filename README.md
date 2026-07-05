@@ -2,8 +2,10 @@
 
 **Memory for AI agents that learns from failures.**
 
+*Stop the second mistake, not just the first.*
+
 [![CI](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml/badge.svg)](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
+[![Python 3.12+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Extracted from a 324K LOC production multi-LLM orchestration system, keeping the one part that demonstrably worked: the error-memory loop that made agents stop repeating mistakes.
@@ -113,7 +115,7 @@ Tested on 40 lessons with adversarially paraphrased queries
 | recall@1  | 0.000       | 0.375      |
 | recall@3  | 0.000       | 0.575      |
 | recall@5  | 0.000       | 0.675      |
-| MRR       | 0.000       | 0.290      |
+| MRR       | 0.000       | 0.488      |
 
 The gold set is intentionally adversarial (queries share few literal words
 with the lesson text), which is why word-overlap scores zero.  On natural

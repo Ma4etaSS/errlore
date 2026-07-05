@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-06
+
+### Fixed
+- README benchmark table showed a stale MRR (0.290); the reproducible value
+  is 0.488 (`python benchmarks/bench_retrieval.py`).
+
+### Changed
+- Python floor lowered to 3.10 (was 3.12): replaced `datetime.UTC` with
+  `timezone.utc`; CI now tests 3.10-3.13. This unblocks Open WebUI's
+  official image (Python 3.11).
+- Added SECURITY.md and richer PyPI project URLs.
+
 ## [0.1.0] - 2026-07-05
 
 ### Added

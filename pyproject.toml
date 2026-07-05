@@ -4,16 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "errlore"
-version = "0.1.0"
+version = "0.1.1"
 description = "Memory for AI agents that learns from failures: lessons, known-issues injection, and per-model trust — embedded, file-based, no server."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 authors = [{ name = "Ma4etaSS" }]
 keywords = ["llm", "agents", "memory", "lessons", "error-learning", "trust"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
@@ -38,7 +40,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Ma4etaSS/errlore"
+Homepage = "https://errlore.com"
+Repository = "https://github.com/Ma4etaSS/errlore"
+Issues = "https://github.com/Ma4etaSS/errlore/issues"
+Changelog = "https://github.com/Ma4etaSS/errlore/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/errlore"]
@@ -48,7 +53,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 100
 src = ["src", "tests"]
 
@@ -59,7 +64,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 "src/errlore/errmem/patterns.py" = ["RUF001", "RUF003"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.10"
 strict = true
 packages = ["errlore"]
 mypy_path = "src"

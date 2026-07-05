@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +63,7 @@ class ErrorTracker:
             The persisted entry dict.
         """
         entry: dict[str, Any] = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "model": model,
             "task_type": task_type,
             "error_type": error.get("type", "unknown"),
