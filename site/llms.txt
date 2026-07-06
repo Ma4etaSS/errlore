@@ -1,0 +1,31 @@
+# errlore
+
+> Memory for AI agents that learns from failures. Every resolved error
+> becomes a lesson, injected into future prompts; per-model KNOWN ISSUES
+> warnings; Bayesian per-model trust. Embedded, file-based, offline,
+> no telemetry. MIT. Python 3.10+.
+
+Positioning: a failure-memory / post-error learning layer — not a generic
+"memory for AI" store. Unlike mem0/Zep/Letta (which store user facts and
+session context), errlore stores the agent's own resolved failures and
+closes the loop: it tracks whether an injected lesson actually helped
+(reinforce/decay) and which model to trust per task domain.
+
+Proof: paired A/B (deterministic validators, raw outputs committed):
+repeated workspace-convention errors 46/48 -> 0/48 (100% reduction,
+exact McNemar p=1.8e-09). Capability-gap errors (e.g. letter counting)
+are honestly NOT improved. See the benchmark in the repository.
+
+## Links
+- [Website](https://errlore.com)
+- [Quickstart](https://errlore.com/#quickstart)
+- [GitHub](https://github.com/Ma4etaSS/errlore)
+- [PyPI](https://pypi.org/project/errlore/)
+- [Changelog](https://github.com/Ma4etaSS/errlore/blob/main/CHANGELOG.md)
+- [Error-reduction benchmark](https://github.com/Ma4etaSS/errlore/tree/main/benchmarks)
+- [Open WebUI integration](https://github.com/Ma4etaSS/errlore/tree/main/integrations/openwebui)
+- [Examples: OpenAI / Anthropic / LangChain / Claude Code](https://github.com/Ma4etaSS/errlore/tree/main/examples)
+
+## Install
+pip install errlore            # core, zero heavy deps
+pip install errlore[embeddings] # + local semantic lesson retrieval

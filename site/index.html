@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>errlore — memory for AI agents that learns from failures</title>
 <meta name="description" content="Your agent keeps making the same mistakes. errlore turns failures into lessons, injects them into prompts, and tracks which model to trust. Embedded, file-based, offline.">
+<meta property="og:title" content="errlore — memory for AI agents that learns from failures">
+<meta property="og:description" content="Every resolved error becomes a lesson, injected into future prompts. 100% elimination of repeated convention errors in a paired A/B. Offline, file-based, MIT.">
+<meta property="og:image" content="https://errlore.com/og.png">
+<meta property="og:url" content="https://errlore.com">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312100d'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' fill='%23d9a441' text-anchor='middle'%3Ee%3C/text%3E%3C/svg%3E">
 <style>
   :root{
@@ -89,17 +94,18 @@
   <div class="links">
     <a href="https://github.com/Ma4etaSS/errlore">GitHub</a>
     <a href="https://pypi.org/project/errlore/">PyPI</a>
-    <a href="#quickstart">Docs</a>
+    <a href="#quickstart">Quickstart</a>
   </div>
 </nav>
 
 <header>
   <h1>Your agent keeps making <em>the same mistakes.</em><br>errlore makes that stop.</h1>
-  <p class="sub">A memory layer for AI agents that learns from failures: every resolved
+  <p class="sub" style="margin-top:14px;font-style:italic;color:var(--gold)">Stop the second mistake, not just the first.</p>
+  <p class="sub" style="margin-top:14px">A memory layer for AI agents that learns from failures: every resolved
   error becomes a lesson, lessons are injected into future prompts, and Bayesian trust
   weights track which model to believe for which job.</p>
   <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:36px">
-    <div class="pip" style="margin-top:0"><span class="dollar">$</span> pip install errlore</div>
+    <div class="pip" style="margin-top:0;cursor:pointer" onclick="navigator.clipboard.writeText('pip install errlore');this.querySelector('.cp').textContent='copied!'" title="Click to copy"><span class="dollar">$</span> pip install errlore <span class="cp" style="color:var(--gold-dim);font-size:12px;margin-left:8px">copy</span></div>
     <a href="https://github.com/Ma4etaSS/errlore" style="display:inline-block;border:1px solid var(--gold-dim);border-radius:8px;padding:14px 22px;font-family:var(--mono);font-size:15px;color:var(--gold)">View on GitHub &rarr;</a>
   </div>
   <div class="cta-row">MIT &middot; Python 3.10+ &middot; 186 tests &middot; CI passing &middot; offline &middot; no telemetry &middot; JSONL, file-locked</div>
@@ -181,16 +187,22 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
     <tr><td class="mono">recall@5</td><td class="zero">0.000</td><td><b>0.675</b></td></tr>
     <tr><td class="mono">MRR</td><td class="zero">0.000</td><td><b>0.488</b></td></tr>
   </table>
-  <p class="note">Reproduce it yourself: <span class="mono">python benchmarks/bench_retrieval.py</span> — the gold set ships in the repo.</p>
+  <p class="note">The gold set is deliberately adversarial — every query is paraphrased to
+  share zero words with its lesson. On natural queries with shared vocabulary, plain
+  word-overlap does fine; embeddings earn their keep on paraphrased ones.
+  Reproduce it yourself: <span class="mono">python benchmarks/bench_retrieval.py</span> — the gold set ships in the repo.</p>
 </section>
 
 <section>
   <h2>Drops into what you already run</h2>
-  <div class="grid2">
-    <div class="card"><h3>Open WebUI</h3><p>Two functions — a Filter that injects lessons
+  <div class="loops">
+    <div class="loop"><h3>Claude Code</h3><p>Hooks wire errlore into your coding agent:
+    failed commands become lessons, and each session starts with a briefing of past
+    pitfalls. See <span class="mono">examples/claude-code/</span>.</p></div>
+    <div class="loop"><h3>Open WebUI</h3><p>Two functions — a Filter that injects lessons
     into every chat and a feedback Action that closes the loop from a button under each
     message. Paste, enable, done.</p></div>
-    <div class="card"><h3>Python SDKs</h3><p>Working examples for the OpenAI SDK,
+    <div class="loop"><h3>Python SDKs</h3><p>Working examples for the OpenAI SDK,
     Anthropic SDK, and LangChain in <span class="mono">examples/</span> — each runnable
     offline, each showing the full learn-inject-reinforce cycle.</p></div>
   </div>
@@ -207,6 +219,8 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
     <tr><td class="mono">tracks per-model weaknesses</td><td class="zero">no</td><td class="zero">no</td><td><b>KNOWN ISSUES + trust</b></td></tr>
     <tr><td class="mono">works offline, no server</td><td>yes</td><td>depends</td><td><b>yes</b></td></tr>
   </table>
+  <p class="note">Not a vector DB, not chat-history RAG, not observability. One job:
+  failures become lessons that reach the next prompt.</p>
 </section>
 
 <section>
@@ -226,6 +240,11 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
     <div><b>Survives anything</b>process restarts, concurrent<br>writers, corrupted lines</div>
     <div><b>Honest by design</b>no fake reinforcement —<br>outcomes only from real feedback</div>
   </div>
+</section>
+
+<section style="padding-top:0">
+  <p class="note" style="text-align:center">Async API, log compaction and multi-agent memory are next —
+  <a href="https://github.com/Ma4etaSS/errlore">watch releases on GitHub</a> to follow.</p>
 </section>
 
 <footer>

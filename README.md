@@ -5,7 +5,7 @@
 *Stop the second mistake, not just the first.*
 
 [![CI](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml/badge.svg)](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml)
-[![Python 3.12+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Extracted from a 324K LOC production multi-LLM orchestration system, keeping the one part that demonstrably worked: the error-memory loop that made agents stop repeating mistakes.
