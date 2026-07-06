@@ -4,6 +4,8 @@
 
 *Stop the second mistake, not just the first.*
 
+![errlore demo: monday failure becomes a lesson, tuesday's prompt gets it injected](https://errlore.com/demo.gif)
+
 [![CI](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml/badge.svg)](https://github.com/Ma4etaSS/errlore/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
