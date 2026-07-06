@@ -57,11 +57,37 @@ mem.report_outcome(inj, success=True)
 print(mem.stats())
 # {'errors_total': 1, 'errors_resolved': 1, 'errors_unresolved': 0,
 #  'lessons_total': 1, 'lessons_applied': 1, 'pending_injections': 0,
-#  'trust': {'gpt-5.5': 0.55}}
+#  'trust': {'gpt-5.5': 0.5522...}}
 ```
 
 No API keys needed. errlore itself never calls any LLM -- it manages local
 JSONL files and does text matching. LLM calls are yours to make (or not).
+
+## Does it actually reduce errors?
+
+Yes -- for the class of errors memory can fix. Paired A/B benchmark
+(`benchmarks/bench_error_reduction.py`): the same model (claude-haiku-4-5)
+runs 96 tasks twice, with and without errlore injection. Deterministic
+validators, no LLM judges; raw outputs committed in
+[benchmarks/results/error_reduction/](benchmarks/results/error_reduction/).
+
+| arm | failures | fail rate |
+|-----|----------|-----------|
+| A: plain | 63/96 | 65.6% |
+| B: with errlore | 20/96 | 20.8% |
+
+Exact McNemar over all 96 pairs: p = 1.8e-09 (49 pairs fixed, 6 broken).
+Split by error class:
+
+- **Knowledge-gap errors** (workspace conventions: date formats, ID
+  normalization, rounding rules, CSV column order): **46/48 -> 0/48, a 100%
+  reduction.** The model didn't know the convention; a lesson told it.
+- **Capability-gap errors** (letter counting, string reversal): 17/48 ->
+  20/48 -- errlore did **not** help and slightly hurt. Memory fixes what the
+  model doesn't know, not what it can't do.
+
+Reproduce: `python benchmarks/bench_error_reduction.py` (needs an Anthropic
+API key; the task families and validators ship in the repo).
 
 ## How it works
 

@@ -5,6 +5,9 @@ Bug 1: TrustEngine state silently reset on process restart (facade used the
 Bug 2: Lost updates under concurrency -- resolve_error/reinforce/decay_unused
        did read -> atomic_rewrite outside a shared lock, so records appended
        by other threads between the read and the rewrite were wiped.
+Bug 3: read_all cached a pre-append snapshot under the post-append stat when
+       an append landed mid-parse, poisoning the cache; atomic_update then
+       silently deleted the concurrent record.
 """
 
 from __future__ import annotations
@@ -112,3 +115,56 @@ class TestNoLostUpdatesUnderConcurrency:
         ]
         seed_row = next(r for r in rows if r["id"] == seed_id)
         assert seed_row["applied_count"] == n_new
+
+
+class TestReadCacheNotPoisonedByMidParseAppend:
+    """Bug 3: read_all cached pre-append records under the post-append stat.
+
+    An append landing between the parse loop and the re-stat made read_all
+    store stale records keyed by the fresh mtime/size; every later read
+    returned stale data and atomic_update silently deleted the concurrent
+    record.  Fixed by caching only when pre-parse stat == post-parse stat.
+    """
+
+    def test_append_during_parse_does_not_poison_cache(
+        self, data_dir: Path, monkeypatch: object
+    ) -> None:
+        import io as _io
+
+        import errlore.io.jsonl_writer as jw
+
+        writer = jw.JSONLWriter()
+        path = data_dir / "records.jsonl"
+        writer.append(path, {"id": 1})
+
+        real_open = open
+        raced = {"done": False}
+
+        def racing_open(file: object, mode: str = "r", *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            # Intercept only read_all's read of our file, exactly once:
+            # snapshot the current content, append a record behind the
+            # parser's back, then hand the parser the stale snapshot.
+            if str(file) == str(path) and mode == "r" and not raced["done"]:
+                raced["done"] = True
+                content = path.read_text(encoding="utf-8")
+                with real_open(path, "a", encoding="utf-8") as af:
+                    af.write(json.dumps({"id": 2}) + "\n")
+                return _io.StringIO(content)
+            return real_open(file, mode, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(jw, "open", racing_open, raising=False)  # type: ignore[attr-defined]
+
+        # The racy read itself legitimately sees the pre-append snapshot...
+        first = writer.read_all(path)
+        assert [r["id"] for r in first] == [1]
+
+        # ...but it must NOT have been cached: the next read sees both.
+        second = writer.read_all(path)
+        assert [r["id"] for r in second] == [1, 2], (
+            "read cache was poisoned by a mid-parse append"
+        )
+
+        # And atomic_update must not delete the concurrently appended record.
+        result = writer.atomic_update(path, lambda entries: entries)
+        assert result is not None
+        assert [r["id"] for r in result] == [1, 2]

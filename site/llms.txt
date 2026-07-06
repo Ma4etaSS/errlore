@@ -12,9 +12,10 @@ closes the loop: it tracks whether an injected lesson actually helped
 (reinforce/decay) and which model to trust per task domain.
 
 Proof: paired A/B (deterministic validators, raw outputs committed):
-repeated workspace-convention errors 46/48 -> 0/48 (100% reduction,
-exact McNemar p=1.8e-09). Capability-gap errors (e.g. letter counting)
-are honestly NOT improved. See the benchmark in the repository.
+63 -> 20 failures across all 96 paired tasks (exact McNemar p=1.8e-09);
+repeated workspace-convention errors 46/48 -> 0/48 (100% reduction).
+Capability-gap errors (e.g. letter counting) are honestly NOT improved
+(17/48 -> 20/48). See the benchmark in the repository.
 
 ## Links
 - [Website](https://errlore.com)

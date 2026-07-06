@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-07-06
+
+### Fixed
+- Read-cache poisoning race in `JSONLWriter.read_all`: an append landing
+  mid-parse cached pre-append records under the post-append mtime/size, so
+  later reads returned stale data and `atomic_update` could silently drop
+  the concurrent record. Now caches only when the file is unchanged across
+  the parse (pre/post stat match). Found by pre-launch adversarial audit;
+  regression test added (Bug 3).
+- Removed dead `JSONLWriter._invalidate_cache`.
+
+### Changed
+- README: added the error-reduction A/B benchmark section (96 paired tasks,
+  63 -> 20 failures, McNemar p=1.8e-09; knowledge-gap 46/48 -> 0/48,
+  capability-gap honestly worse at 17/48 -> 20/48), so the PyPI page shows
+  the headline evidence, not just the retrieval table.
+
 ## [0.1.2] - 2026-07-06
 
 ### Added

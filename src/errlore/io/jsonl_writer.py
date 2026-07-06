@@ -285,11 +285,6 @@ class JSONLWriter:
             self.atomic_rewrite(path, new_entries)
             return new_entries
 
-    def _invalidate_cache(self, path: Path) -> None:
-        """Drop the read cache entry for *path*."""
-        with self._cache_lock:
-            self._read_cache.pop(str(path), None)
-
     def read_all(self, path: Path) -> list[dict[str, object]]:
         """Read all valid records from a JSONL file.
 
@@ -330,13 +325,17 @@ class JSONLWriter:
                 except json.JSONDecodeError:
                     logger.warning("Skipping corrupted line in %s", path.name)
 
-        # Re-stat after parse to store a consistent snapshot.
+        # Cache only if the file is unchanged since the pre-parse stat.
+        # An append landing mid-parse would otherwise store the pre-append
+        # records under the post-append mtime/size — a poisoned cache that
+        # makes atomic_update silently drop the concurrent record.
         try:
             st2 = path.stat()
         except OSError:
             return records
 
-        with self._cache_lock:
-            self._read_cache[key] = (st2.st_mtime_ns, st2.st_size, records)
+        if st2.st_mtime_ns == st.st_mtime_ns and st2.st_size == st.st_size:
+            with self._cache_lock:
+                self._read_cache[key] = (st.st_mtime_ns, st.st_size, records)
 
         return [dict(r) for r in records]

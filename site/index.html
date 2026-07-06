@@ -168,16 +168,36 @@ mem.resolve(err, <span class="c-str">"added validation"</span>,
             lesson=<span class="c-str">"For date extraction, demand ISO-8601 and verify against source"</span>)
 
 <span class="c-com"># 3. next similar task — memory speaks up</span>
-inj = mem.inject_for(<span class="c-str">"extract dates from contract"</span>, model=<span class="c-str">"gpt-5.5"</span>)
-prompt = task + inj.text
+task = <span class="c-str">"extract dates from contract"</span>
+inj = mem.inject_for(task, model=<span class="c-str">"gpt-5.5"</span>, task_type=<span class="c-str">"extraction"</span>)
+prompt = task + <span class="c-str">"\n\n"</span> + inj.text
 <span class="c-out"># [LESSONS FROM PAST FAILURES]
-# - hallucinated dates -> For date extraction, demand ISO-8601...
+# - UnclassifiedError: hallucinated dates -> For date extraction,
+#   demand ISO-8601 and verify against source
+#
 # KNOWN ISSUES:
 # - Past error on similar task: hallucinated dates</span>
 
 <span class="c-com"># 4. close the loop — did it help?</span>
 mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
   </div>
+</section>
+
+<section>
+  <h2>Measured, not promised</h2>
+  <p style="color:var(--dim);margin-bottom:18px">Paired A/B: the same model
+  (claude-haiku-4-5) runs 96 tasks with and without errlore injection. Deterministic
+  validators, no LLM judges; raw outputs committed to the repo. Exact McNemar over
+  all 96 pairs: p&nbsp;=&nbsp;1.8e-09.</p>
+  <table>
+    <tr><th>error class</th><th>plain</th><th>with errlore</th></tr>
+    <tr><td>knowledge-gap (workspace conventions)</td><td>46/48</td><td><b class="zero">0/48</b></td></tr>
+    <tr><td>capability-gap (model skill limits)</td><td>17/48</td><td>20/48</td></tr>
+  </table>
+  <p class="note">The honest half is the second row: errlore did <i>not</i> help on
+  things the model can't do (letter counting, string reversal) — and even slightly hurt.
+  Memory fixes what the model doesn't know, not what it can't do.
+  Reproduce it yourself: <span class="mono">python benchmarks/bench_error_reduction.py</span>.</p>
 </section>
 
 <section>
