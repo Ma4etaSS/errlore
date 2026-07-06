@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-07-06
+
+### Added
+- Error-reduction A/B benchmark with committed raw outputs: repeated
+  workspace-convention errors 46/48 -> 0/48 (100% reduction, McNemar
+  p=1.8e-09); capability-gap errors honestly unaffected.
+- Claude Code hooks example (examples/claude-code/): PostToolUse failure
+  logging + SessionStart lessons briefing.
+- 15-second terminal demo GIF (real library output).
+
+### Fixed
+- `errlore.__version__` dunder reported 0.1.0 in the 0.1.1 wheel.
+
 ## [0.1.1] - 2026-07-06
 
 ### Fixed
