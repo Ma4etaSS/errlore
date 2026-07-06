@@ -63,6 +63,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "src/errlore/errmem/patterns.py" = ["RUF001", "RUF003"]
 "benchmarks/*" = ["E501", "SIM115"]  # long authored lesson strings; long-lived log handle
+"site/*" = ["E501"]  # demo-script terminal strings read better unwrapped
 
 [tool.mypy]
 python_version = "3.12"  # numpy stubs need 3.12 syntax; 3.10 runtime compat is enforced by ruff(py310) + CI matrix
