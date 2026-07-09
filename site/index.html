@@ -8,8 +8,73 @@
 <meta property="og:title" content="errlore — failure memory for AI agents">
 <meta property="og:description" content="Turns each resolved error into a lesson, injected into the next similar prompt so the agent stops repeating it. Honest paired A/B in the repo. Offline, file-based, MIT.">
 <meta property="og:image" content="https://errlore.com/og.png">
-<meta property="og:url" content="https://errlore.com">
+<meta property="og:image:alt" content="errlore — failure memory for AI agents">
+<meta property="og:url" content="https://errlore.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="errlore">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="errlore — failure memory for AI agents">
+<meta name="twitter:description" content="Turns each resolved error into a lesson, injected into the next similar prompt so the agent stops repeating it. Offline, file-based, MIT.">
+<meta name="twitter:image" content="https://errlore.com/og.png">
+<link rel="canonical" href="https://errlore.com/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="author" content="Ma4etaSS">
+<meta name="keywords" content="AI agent memory, failure memory, LLM agent memory, Claude Code memory, error learning, agent self-improvement, prompt engineering, reflexion library, Python, MIT, offline, local-first">
+<meta name="theme-color" content="#12100d">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "errlore",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Cross-platform (Python 3.10+)",
+  "description": "Memory for AI agents that learns from failures: every resolved error becomes a lesson injected into the next similar prompt, with per-model known-issues and a reinforce/decay loop. Embedded, file-based, offline, no server, MIT.",
+  "url": "https://errlore.com/",
+  "downloadUrl": "https://pypi.org/project/errlore/",
+  "installUrl": "https://pypi.org/project/errlore/",
+  "softwareVersion": "0.1.4",
+  "license": "https://opensource.org/licenses/MIT",
+  "programmingLanguage": "Python",
+  "codeRepository": "https://github.com/Ma4etaSS/errlore",
+  "keywords": "AI agent memory, failure memory, LLM, Claude Code, error learning, self-improving agents",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "Ma4etaSS", "url": "https://github.com/Ma4etaSS" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is errlore?",
+      "acceptedAnswer": { "@type": "Answer", "text": "errlore is an open-source Python library that gives an AI agent a memory of its own failures. Every error you resolve becomes a lesson that is injected into the next similar prompt, so the agent stops repeating fixed mistakes. It also tracks per-model KNOWN ISSUES and reinforces lessons that help. Embedded, file-based (JSONL), offline, no server, MIT." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is errlore different from mem0, Zep, or vector memory?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Those store facts about the user or session context. errlore stores the agent's own resolved failures and closes the loop on whether recalling a lesson actually helped (reinforce/decay). It is an embedded, local, file-based library rather than a hosted service." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does errlore actually reduce errors?",
+      "acceptedAnswer": { "@type": "Answer", "text": "In a paired A/B benchmark with deterministic validators and committed raw outputs, failures across 96 tasks dropped from 63 to 20 (exact McNemar p=1.8e-09). It fixes what the model doesn't know (repeated conventions), not what it can't do — capability-gap errors were honestly not improved. It is a single run at temperature 0." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does errlore work offline?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. The core makes zero network calls, needs no API keys, and stores everything in local JSONL files. The optional semantic-retrieval extra downloads a ~120 MB local model once, then also runs offline." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I use errlore with Claude Code?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Run 'pip install errlore' then 'errlore init claude-code'. That installs hooks so failed Bash commands become lessons and every new session is briefed on past pitfalls." }
+    }
+  ]
+}
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312100d'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' fill='%23d9a441' text-anchor='middle'%3Ee%3C/text%3E%3C/svg%3E">
 <style>
   :root{

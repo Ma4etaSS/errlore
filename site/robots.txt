@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# AI/LLM crawlers are welcome — there's an llms.txt for you too.
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://errlore.com/sitemap.xml
