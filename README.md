@@ -258,6 +258,30 @@ prompts and reaches the model. So:
 
 Report security issues to the address in [SECURITY.md](SECURITY.md).
 
+## Scale & limits (honest)
+
+errlore is built for **one process, thousands of lessons** — a single agent or
+a coding-agent session, not a high-throughput fleet. Know the edges:
+
+- **`injections.jsonl` grows unbounded.** `report_outcome` scans the whole
+  ledger each call, so at very high injection volumes it slows down (roughly
+  linear in total injections). Fine for interactive/agent use; log compaction
+  is the next roadmap item. If you don't need the reinforcement loop, you can
+  ignore `report_outcome` and the file stays small.
+- **Single-process by default.** The lesson/error stores use cross-process file
+  locks and are safe to share, but the **trust engine and the optional vector
+  index are not cross-process safe** — two processes writing `trust.json` /
+  `vectors.npy` concurrently can clobber each other (last-writer-wins). Run one
+  writer, or give each process its own `data_dir`. Multi-agent shared memory is
+  on the roadmap.
+- **Embeddings index rebuild is O(n²) over many adds** — building a fresh index
+  over a large existing lesson store is slow the first time (then incremental).
+- Concurrency is tested across threads; **multi-process** stress is not yet in
+  the suite.
+
+None of these bite at the scale errlore targets today; they're stated so you
+can decide, not discover.
+
 ## Roadmap
 
 - [ ] Log compaction for injections journal
