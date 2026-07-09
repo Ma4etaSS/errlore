@@ -140,6 +140,10 @@ pip install errlore[embeddings]   # installs fastembed + numpy
 mem = AgentMemory("./agent_memory", embeddings=True)
 ```
 
+> The embedding model (~120 MB ONNX) is downloaded once on first use, then
+> runs locally with no further network calls. The core (word-overlap) stays
+> fully offline and dependency-free.
+
 ### Benchmark (adversarial paraphrasing)
 
 Tested on 40 lessons with adversarially paraphrased queries
