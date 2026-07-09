@@ -24,6 +24,9 @@ dependencies = [
     "filelock>=3.13",
 ]
 
+[project.scripts]
+errlore = "errlore.cli:main"
+
 [project.optional-dependencies]
 embeddings = [
     "fastembed>=0.6,<0.9",

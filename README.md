@@ -191,14 +191,36 @@ queries with shared vocabulary, word-overlap works fine.
 errlore is framework-agnostic. It produces a text block; you put it in the
 system prompt.
 
-| Provider   | Example                                              |
-|------------|------------------------------------------------------|
-| OpenAI     | [examples/openai_agent.py](examples/openai_agent.py) |
-| Anthropic  | [examples/anthropic_agent.py](examples/anthropic_agent.py) |
-| LangChain  | [examples/langchain_agent.py](examples/langchain_agent.py) |
+**Claude Code** — one command wires up failure-memory across sessions:
 
-All examples run offline with `python examples/<name>.py` (mock responses,
+```bash
+errlore init claude-code            # or: --project for this repo only
+```
+
+Failed Bash commands become lessons; every new session is briefed on past
+pitfalls. See [examples/claude-code/](examples/claude-code/).
+
+| Provider    | Example                                              |
+|-------------|------------------------------------------------------|
+| Claude Code | [examples/claude-code/](examples/claude-code/) — hooks, `errlore init claude-code` |
+| Open WebUI  | [integrations/openwebui/](integrations/openwebui/) — memory Filter + feedback Action |
+| OpenAI      | [examples/openai_agent.py](examples/openai_agent.py) |
+| Anthropic   | [examples/anthropic_agent.py](examples/anthropic_agent.py) |
+| LangChain   | [examples/langchain_agent.py](examples/langchain_agent.py) |
+
+The SDK examples run offline with `python examples/<name>.py` (mock responses,
 no API keys). Set `use_api=True` to call real models.
+
+### CLI
+
+`pip install errlore` also installs an `errlore` command:
+
+```bash
+errlore init claude-code   # install Claude Code hooks + settings
+errlore stats              # memory stats for a data dir (--data-dir)
+errlore lessons            # list stored lessons
+errlore --version
+```
 
 ## API overview
 

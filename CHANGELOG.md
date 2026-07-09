@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **CLI** (`errlore` console command): `errlore init claude-code` writes the
+  two Claude Code hook scripts and idempotently merges them into your
+  `settings.json` (global or `--project`), preserving existing hooks — a
+  one-command install instead of copy/edit/merge. Plus `errlore stats` and
+  `errlore lessons`.
+- `errlore.integrations.claude_code` — the hook logic (`post_tool_use`,
+  `session_start`) now ships in the package and is tested, so the generated
+  hooks are 3-line shims.
+
+### Changed
+- README: honest A/B framing (the knowledge-gap baseline fails by
+  construction; the result shows the capture-and-re-supply loop works, not
+  that memory teaches skills; single-run-at-temp-0 caveat). Coding-agent-first
+  hero. Security section reworded — the sanitizer is a noise filter on the
+  pattern, not an injection defense. Added a "Scale & limits" section
+  (unbounded injections journal, single-process trust/vector index).
+- Examples no longer hard-code aging frontier model ids; they use
+  `os.getenv(...)` with a small default.
+
 ## [0.1.3] - 2026-07-06
 
 ### Fixed
