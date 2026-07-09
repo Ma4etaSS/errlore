@@ -2,14 +2,15 @@
 
 > Memory for AI agents that learns from failures. Every resolved error
 > becomes a lesson, injected into future prompts; per-model KNOWN ISSUES
-> warnings; Bayesian per-model trust. Embedded, file-based, offline,
-> no telemetry. MIT. Python 3.10+.
+> warnings; experimental per-model trust weights. Embedded, file-based,
+> offline, no telemetry. MIT. Python 3.10+.
 
 Positioning: a failure-memory / post-error learning layer — not a generic
 "memory for AI" store. Unlike mem0/Zep/Letta (which store user facts and
 session context), errlore stores the agent's own resolved failures and
 closes the loop: it tracks whether an injected lesson actually helped
-(reinforce/decay) and which model to trust per task domain.
+(reinforce/decay). A per-model trust layer for routing ships too, but is
+experimental — it needs a spread of real outcomes to discriminate.
 
 Proof: paired A/B (deterministic validators, raw outputs committed):
 63 -> 20 failures across all 96 paired tasks (exact McNemar p=1.8e-09);
