@@ -27,6 +27,21 @@ Your agent keeps making the same mistakes. errlore fixes that:
 Embedded, file-based (JSONL), no server, no database, no API keys required.
 Works fully offline. Your data never leaves your machine.
 
+## Who it's for
+
+errlore isn't memory for everything — it's memory for **failures**. It shines
+wherever an agent repeats the *same class* of mistake:
+
+- **Coding agents** (Claude Code, Cursor, SWE agents) that keep re-introducing
+  the same bug or forgetting a project convention across sessions.
+- **Extraction pipelines** (PDFs, invoices, contracts) that hallucinate the
+  same date format, rounding rule, or schema field every week.
+- **Any repeated-failure workflow** where a fix should stick the first time,
+  not be re-discovered on every run.
+
+It fixes what the model doesn't *know* (a convention, a gotcha), not what it
+*can't do* — see the benchmark below.
+
 ## Quickstart (< 5 minutes)
 
 ```bash
@@ -212,6 +227,20 @@ you only need them for advanced use.
 - Sidecar files (auto-managed): `*.idx` (byte-offset index), `*.lock`
   (filelock), `vectors.npy` (embedding vectors), `vector_meta.json`
   (embedding metadata), `trust.json` (trust engine state).
+
+## Security
+
+A lesson is **trusted prompt content by design** — its text is injected into
+your prompts verbatim (after a sanitizer that strips raw JSON/code blobs, caps
+length, and rejects unsalvageable junk). So:
+
+- **Do not ingest lessons from untrusted sources without review.** Treat lesson
+  capture like a code review, not like user input. A malicious lesson is a
+  prompt-injection vector.
+- You control what becomes a lesson (`resolve(..., lesson=...)` /
+  `add_lesson(...)`); nothing is auto-promoted from raw model output.
+
+Report security issues to the address in [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 

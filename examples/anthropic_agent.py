@@ -16,15 +16,15 @@ runs end-to-end without network access.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
 from errlore import AgentMemory
 
-# Current Claude lineup (2026): claude-fable-5 (most capable),
-# claude-opus-4-8 (recommended default), claude-sonnet-4-6 (speed/cost balance),
-# claude-haiku-4-5 (fastest). Use exact IDs as-is -- no date suffixes.
-MODEL = "claude-opus-4-8"
+# Model is just a label to errlore (it never calls the API itself). Override
+# with your own Claude model id; the default is a small, fast, cheap option.
+MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 
 
 # -- Agent wrapper -----------------------------------------------------------

@@ -19,14 +19,15 @@ The ``if __name__`` block uses a mock instead of a real LLM call.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
 from errlore import AgentMemory, Injection
 
-# Current OpenAI lineup (2026): gpt-5.5 (frontier, recommended),
-# gpt-5.4-mini / gpt-5.4-nano (lower latency & cost).
-MODEL = "gpt-5.5"
+# Model is just a label to errlore (it never calls the API itself). Override
+# with your own; the default is a small, cheap, widely-available option.
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 
 # -- errlore + LangChain glue ------------------------------------------------
