@@ -102,13 +102,13 @@
   <h1>Your agent keeps making <em>the same mistakes.</em><br>errlore makes that stop.</h1>
   <p class="sub" style="margin-top:14px;font-style:italic;color:var(--gold)">Stop the second mistake, not just the first.</p>
   <p class="sub" style="margin-top:14px">A memory layer for AI agents that learns from failures: every resolved
-  error becomes a lesson, lessons are injected into future prompts, and Bayesian trust
-  weights track which model to believe for which job.</p>
+  error becomes a lesson, lessons are injected into future prompts, and errlore tracks
+  whether each lesson actually helped &mdash; reinforcing the ones that do.</p>
   <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:36px">
     <div class="pip" style="margin-top:0;cursor:pointer" onclick="navigator.clipboard.writeText('pip install errlore');this.querySelector('.cp').textContent='copied!'" title="Click to copy"><span class="dollar">$</span> pip install errlore <span class="cp" style="color:var(--gold-dim);font-size:12px;margin-left:8px">copy</span></div>
     <a href="https://github.com/Ma4etaSS/errlore" style="display:inline-block;border:1px solid var(--gold-dim);border-radius:8px;padding:14px 22px;font-family:var(--mono);font-size:15px;color:var(--gold)">View on GitHub &rarr;</a>
   </div>
-  <div class="cta-row">MIT &middot; Python 3.10+ &middot; 186 tests &middot; CI passing &middot; offline &middot; no telemetry &middot; JSONL, file-locked</div>
+  <div class="cta-row">MIT &middot; Python 3.10+ &middot; 187 tests &middot; CI passing &middot; offline &middot; no telemetry &middot; JSONL, file-locked</div>
 </header>
 
 <div class="story">
@@ -139,10 +139,10 @@
       warned about their own history.</p>
     </div>
     <div class="loop">
-      <h3><span class="n">03</span>Trust</h3>
-      <p>Bayesian per-model, per-domain trust weights built from observed outcomes.
-      <code>mem.best_model("code")</code> answers the routing question with data,
-      not vibes.</p>
+      <h3><span class="n">03</span>Trust <span style="font-family:var(--mono);font-size:12px;color:var(--gold-dim);letter-spacing:.05em">experimental</span></h3>
+      <p>Bayesian per-model, per-domain trust weights built from observed outcomes, for
+      routing via <code>mem.best_model("code")</code>. Needs a spread of real outcomes
+      to separate models &mdash; shipped, but not yet proven in the wild.</p>
     </div>
   </div>
 </section>
@@ -241,7 +241,7 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
     <tr><td class="mono">turns them into lessons</td><td class="zero">no</td><td class="zero">no</td><td><b>yes</b></td></tr>
     <tr><td class="mono">injects into future prompts</td><td class="zero">no</td><td>retrieval only</td><td><b>yes, with feedback loop</b></td></tr>
     <tr><td class="mono">knows if a lesson helped</td><td class="zero">no</td><td class="zero">no</td><td><b>reinforce / decay</b></td></tr>
-    <tr><td class="mono">tracks per-model weaknesses</td><td class="zero">no</td><td class="zero">no</td><td><b>KNOWN ISSUES + trust</b></td></tr>
+    <tr><td class="mono">tracks per-model weaknesses</td><td class="zero">no</td><td class="zero">no</td><td><b>KNOWN ISSUES warnings</b></td></tr>
     <tr><td class="mono">works offline, no server</td><td>yes</td><td>depends</td><td><b>yes</b></td></tr>
   </table>
   <p class="note">Not a vector DB, not chat-history RAG, not observability. One job:
@@ -253,7 +253,7 @@ mem.report_outcome(inj, success=<span class="c-kw">True</span>)</pre>
   <div class="loops">
     <div class="loop"><h3><span class="n">&rsaquo;</span>Coding agents</h3><p>that keep re-introducing the same class of bug across sessions.</p></div>
     <div class="loop"><h3><span class="n">&rsaquo;</span>Extraction pipelines</h3><p>that hallucinate dates, numbers and schema fields the same way every week.</p></div>
-    <div class="loop"><h3><span class="n">&rsaquo;</span>Multi-model routing</h3><p>pick the model per task from observed outcomes &mdash; <span class="mono">mem.best_model("code")</span> &mdash; not vibes.</p></div>
+    <div class="loop"><h3><span class="n">&rsaquo;</span>Multi-model routing <span style="font-family:var(--mono);font-size:12px;color:var(--gold-dim)">experimental</span></h3><p>pick the model per task from observed outcomes &mdash; <span class="mono">mem.best_model("code")</span>. The trust layer is shipped but still earning its evidence.</p></div>
   </div>
 </section>
 

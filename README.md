@@ -18,8 +18,9 @@ Your agent keeps making the same mistakes. errlore fixes that:
   into the prompt for similar future tasks.
 - **Known issues** -- per-model weakness tracking ("gpt-5.5 keeps hallucinating dates in
   extraction tasks") injected as warnings.
-- **Trust** -- Bayesian per-model, per-domain trust weights: know which model to pick
-  for which job, based on observed outcomes.
+- **Trust** *(experimental)* -- Bayesian per-model, per-domain trust weights: a starting
+  point for which model to pick per job, based on observed outcomes. Needs a spread of
+  real outcomes to separate models; shipped, but not yet proven on production traffic.
 - **Closed loop** -- errlore tracks whether an injected lesson actually helped and
   reinforces or decays it automatically.
 
@@ -112,12 +113,18 @@ Per-model, per-task-type error tracking. When a model has failed on a task
 type before, `inject_for` adds a warning block to the prompt. Separate from
 lessons: lessons are *solutions*, known issues are *warnings*.
 
-### 3. Trust loop
+### 3. Trust loop *(experimental)*
 
 Bayesian per-model weights with adaptive learning rate, cold-start blending,
 entropy enforcement, and temporal decay.  After enough observations, call
 `mem.best_model("code_generation")` to pick the model that historically
 performs best on that domain.
+
+> **Status: experimental.** The engine is tested and works, but discrimination
+> between models only emerges from a *spread* of real outcomes over time — feed
+> it a stream that is mostly successes and every model converges near the cap.
+> Treat `best_model()` as a hint to validate, not a proven router yet. The
+> lesson + known-issue loops above are the proven core (see the A/B benchmark).
 
 ## Semantic retrieval (optional)
 
@@ -176,7 +183,7 @@ you only need them for advanced use.
 | `report_outcome(inj, success)` | Close the loop: reinforce lessons, update trust.|
 | `add_lesson(pattern, solution)` | Add a lesson directly (sanitized).            |
 | `lessons(limit)`              | List all lessons (sorted by confidence).       |
-| `best_model(domain)`          | Model with the highest trust weight.           |
+| `best_model(domain)`          | Model with the highest trust weight *(experimental)*. |
 | `model_penalty(model, task_type)` | Error-history penalty `[0, 1]`.            |
 | `pending_injections()`        | Injections not yet reported.                   |
 | `stats()`                     | Aggregate counts + trust weights.              |
