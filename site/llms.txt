@@ -14,9 +14,11 @@ experimental — it needs a spread of real outcomes to discriminate.
 
 Proof: paired A/B (deterministic validators, raw outputs committed):
 63 -> 20 failures across all 96 paired tasks (exact McNemar p=1.8e-09);
-repeated workspace-convention errors 46/48 -> 0/48 (100% reduction).
-Capability-gap errors (e.g. letter counting) are honestly NOT improved
-(17/48 -> 20/48). See the benchmark in the repository.
+workspace-convention errors the model can't guess 46/48 -> 0/48 — arm A
+fails by construction, so this shows the capture-and-re-supply loop works
+end to end, not that memory teaches skills. Capability-gap errors (e.g.
+letter counting) are honestly NOT improved (17/48 -> 20/48). Single run at
+temp 0. See the benchmark in the repository.
 
 ## Links
 - [Website](https://errlore.com)

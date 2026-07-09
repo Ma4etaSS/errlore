@@ -81,11 +81,12 @@ JSONL files and does text matching. LLM calls are yours to make (or not).
 
 ## Does it actually reduce errors?
 
-Yes -- for the class of errors memory can fix. Paired A/B benchmark
-(`benchmarks/bench_error_reduction.py`): the same model (claude-haiku-4-5)
-runs 96 tasks twice, with and without errlore injection. Deterministic
-validators, no LLM judges; raw outputs committed in
-[benchmarks/results/error_reduction/](benchmarks/results/error_reduction/).
+For the class of errors memory can fix — yes, and here's the honest version.
+Paired A/B (`benchmarks/bench_error_reduction.py`): the same model
+(claude-haiku-4-5) runs 96 tasks twice, with and without errlore injection.
+Deterministic validators, no LLM judges; raw outputs committed in
+[benchmarks/results/error_reduction/](benchmarks/results/error_reduction/) so
+you can recompute every number.
 
 | arm | failures | fail rate |
 |-----|----------|-----------|
@@ -96,14 +97,24 @@ Exact McNemar over all 96 pairs: p = 1.8e-09 (49 pairs fixed, 6 broken).
 Split by error class:
 
 - **Knowledge-gap errors** (workspace conventions: date formats, ID
-  normalization, rounding rules, CSV column order): **46/48 -> 0/48, a 100%
-  reduction.** The model didn't know the convention; a lesson told it.
+  normalization, rounding rules, CSV column order): 46/48 -> 0/48. The model
+  can't know a convention it was never told, so arm A fails almost by
+  construction; the result shows errlore **captures the fix once and re-supplies
+  it** on the next similar task, end to end. That store-and-inject loop is the
+  claim — not that memory teaches skills.
 - **Capability-gap errors** (letter counting, string reversal): 17/48 ->
   20/48 -- errlore did **not** help and slightly hurt. Memory fixes what the
   model doesn't know, not what it can't do.
 
-Reproduce: `python benchmarks/bench_error_reduction.py` (needs an Anthropic
-API key; the task families and validators ship in the repo).
+**Caveats, up front:** this is a single run at temperature 0 (LLM output is
+still slightly non-deterministic, so exact fine-grained counts vary between
+runs — the large knowledge-gap effect is robust; the capability-gap delta is
+within noise). The knowledge-gap task families use conventions the model
+demonstrably can't guess, which is the point — but it means the headline is
+"the loop works," not "90% fewer errors everywhere."
+
+Reproduce: `python benchmarks/bench_error_reduction.py --backend anthropic`
+(needs an Anthropic API key; task families and validators ship in the repo).
 
 ## How it works
 
@@ -230,13 +241,18 @@ you only need them for advanced use.
 
 ## Security
 
-A lesson is **trusted prompt content by design** — its text is injected into
-your prompts verbatim (after a sanitizer that strips raw JSON/code blobs, caps
-length, and rejects unsalvageable junk). So:
+A lesson is **trusted prompt content by design** — it is injected into your
+prompts and reaches the model. So:
 
 - **Do not ingest lessons from untrusted sources without review.** Treat lesson
   capture like a code review, not like user input. A malicious lesson is a
-  prompt-injection vector.
+  prompt-injection vector — and this is the real control, not the sanitizer.
+- **What the sanitizer does (and does not) do.** The lesson *pattern* passes
+  `sanitize_lesson_text`: it strips raw-JSON/code-fence *noise* and caps length
+  so log blobs don't pollute the prompt. It is a noise filter, **not** an
+  injection defense — it does not neutralize natural-language instructions, and
+  the *solution* text is stored as you author it (so it can hold real code).
+  Don't rely on it to make untrusted lessons safe.
 - You control what becomes a lesson (`resolve(..., lesson=...)` /
   `add_lesson(...)`); nothing is auto-promoted from raw model output.
 
