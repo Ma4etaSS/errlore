@@ -4,8 +4,14 @@
 functions here, so the real (tested) logic lives in the package instead of in
 copy-pasted example files:
 
-* :func:`post_tool_use` -- a PostToolUse hook: a failed Bash command becomes an
-  errlore error.
+* :func:`post_tool_use_failure` -- a PostToolUseFailure hook: a failed Bash
+  command becomes an errlore error. Current Claude Code routes tool failures
+  to this dedicated event (PostToolUse fires only on SUCCESS) with a top-level
+  ``error`` string and no ``tool_response``.
+* :func:`post_tool_use` -- legacy PostToolUse handler, kept for older Claude
+  Code versions whose PostToolUse payload carried ``exit_code``/``is_error``.
+  On current versions a failed command never reaches PostToolUse, so this
+  stays a harmless no-op.
 * :func:`session_start` -- a SessionStart hook: print the lessons + KNOWN ISSUES
   briefing to stdout (Claude Code adds hook stdout to the session context).
 
@@ -67,6 +73,49 @@ def post_tool_use(event_json: str | None = None) -> int:
     try:
         AgentMemory(data_dir()).log_error(
             "claude-code", "bash", f"CommandFailed: {command} :: {output}",
+        )
+    except Exception:  # never break the agent loop
+        return 0
+    return 0
+
+
+def post_tool_use_failure(event_json: str | None = None) -> int:
+    """Log a failed Bash command from a PostToolUseFailure event.
+
+    Current Claude Code fires this dedicated event when a tool call fails
+    (PostToolUse only fires on success). The payload carries ``tool_name``,
+    ``tool_input`` and a top-level ``error`` string — there is no
+    ``tool_response`` and no structured exit code.
+
+    Args:
+        event_json: The raw hook-event JSON. ``None`` reads ``sys.stdin``
+            (the real hook path); tests pass a string.
+
+    Returns:
+        Always ``0`` -- a hook must never break the agent loop.
+    """
+    raw = event_json if event_json is not None else sys.stdin.read()
+    try:
+        event: Any = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return 0
+    if not isinstance(event, dict):
+        return 0
+
+    if event.get("tool_name", "") != "Bash":
+        return 0
+    # A user hitting Esc is not a failure worth learning from.
+    if bool(event.get("is_interrupt")):
+        return 0
+
+    tool_input = event.get("tool_input") or {}
+    command = str(tool_input.get("command", "") if isinstance(tool_input, dict) else "")[:160]
+    error = str(event.get("error") or "")[:200]
+    if not command and not error:
+        return 0
+    try:
+        AgentMemory(data_dir()).log_error(
+            "claude-code", "bash", f"CommandFailed: {command} :: {error}",
         )
     except Exception:  # never break the agent loop
         return 0

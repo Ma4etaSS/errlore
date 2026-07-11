@@ -9,7 +9,11 @@ import pytest
 
 from errlore import AgentMemory
 from errlore.cli import main
-from errlore.integrations.claude_code import post_tool_use, session_start
+from errlore.integrations.claude_code import (
+    post_tool_use,
+    post_tool_use_failure,
+    session_start,
+)
 
 # --------------------------------------------------------------------------
 # Claude Code hook logic
@@ -39,6 +43,45 @@ def test_post_tool_use_ignores_success_nonbash_and_junk(
     # not JSON / not a dict — must never raise
     assert post_tool_use("not json at all") == 0
     assert post_tool_use("[1, 2, 3]") == 0
+    assert AgentMemory(tmp_path).stats()["errors_total"] == 0
+
+
+def test_post_tool_use_failure_logs_failed_bash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The payload shape current Claude Code actually sends for a failed
+    command — PostToolUseFailure with a top-level `error` string and no
+    tool_response (verbatim from the hooks reference docs)."""
+    monkeypatch.setenv("ERRLORE_DATA", str(tmp_path))
+    event = json.dumps({
+        "hook_event_name": "PostToolUseFailure",
+        "tool_name": "Bash",
+        "tool_input": {"command": "npm test", "description": "Run test suite"},
+        "error": "Command exited with non-zero status code 1",
+        "is_interrupt": False,
+        "duration_ms": 4187,
+    })
+    assert post_tool_use_failure(event) == 0
+    mem = AgentMemory(tmp_path)
+    assert mem.stats()["errors_total"] == 1
+
+
+def test_post_tool_use_failure_ignores_interrupt_nonbash_and_junk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ERRLORE_DATA", str(tmp_path))
+    # user pressed Esc — not a failure worth learning from
+    interrupted = json.dumps({
+        "tool_name": "Bash", "tool_input": {"command": "sleep 100"},
+        "error": "interrupted", "is_interrupt": True,
+    })
+    assert post_tool_use_failure(interrupted) == 0
+    # non-Bash tool failure
+    nonbash = json.dumps({"tool_name": "Read", "error": "file not found"})
+    assert post_tool_use_failure(nonbash) == 0
+    # junk — must never raise
+    assert post_tool_use_failure("not json") == 0
+    assert post_tool_use_failure("[]") == 0
     assert AgentMemory(tmp_path).stats()["errors_total"] == 0
 
 
@@ -79,20 +122,26 @@ def test_init_claude_code_writes_hooks_and_merges_settings(
 
     # hook shims written + executable
     post = hooks_dir / "errlore_posttooluse.py"
+    failure = hooks_dir / "errlore_posttoolusefailure.py"
     session = hooks_dir / "errlore_sessionstart.py"
-    assert post.exists() and session.exists()
+    assert post.exists() and failure.exists() and session.exists()
     assert "post_tool_use" in post.read_text()
+    assert "post_tool_use_failure" in failure.read_text()
     assert str(data_dir) in post.read_text()  # data dir pinned into the shim
 
     # settings.json wired
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     ptu = settings["hooks"]["PostToolUse"]
+    ptuf = settings["hooks"]["PostToolUseFailure"]
     ss = settings["hooks"]["SessionStart"]
     assert any("errlore_posttooluse.py" in h["command"]
                for g in ptu for h in g["hooks"])
+    assert any("errlore_posttoolusefailure.py" in h["command"]
+               for g in ptuf for h in g["hooks"])
     assert any("errlore_sessionstart.py" in h["command"]
                for g in ss for h in g["hooks"])
     assert ptu[0]["matcher"] == "Bash"
+    assert ptuf[0]["matcher"] == "Bash"
 
 
 def test_init_claude_code_is_idempotent(
@@ -106,6 +155,7 @@ def test_init_claude_code_is_idempotent(
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
     # no duplicated hook entries
     assert len(settings["hooks"]["PostToolUse"]) == 1
+    assert len(settings["hooks"]["PostToolUseFailure"]) == 1
     assert len(settings["hooks"]["SessionStart"]) == 1
 
 

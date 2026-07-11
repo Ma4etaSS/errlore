@@ -11,6 +11,17 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /path/to/errlore_posttoolusefailure.py"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

@@ -76,13 +76,16 @@ def _cmd_init_claude_code(args: argparse.Namespace) -> int:
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
     post = hooks_dir / "errlore_posttooluse.py"
+    failure = hooks_dir / "errlore_posttoolusefailure.py"
     session = hooks_dir / "errlore_sessionstart.py"
     _write_hook(post, "post_tool_use", data_dir)
+    _write_hook(failure, "post_tool_use_failure", data_dir)
     _write_hook(session, "session_start", data_dir)
 
     # Same interpreter that runs the CLI -> the one where errlore is installed.
     py = sys.executable or "python3"
     cmd_post = f"{py} {post}"
+    cmd_failure = f"{py} {failure}"
     cmd_session = f"{py} {session}"
 
     settings_path = (
@@ -110,7 +113,11 @@ def _cmd_init_claude_code(args: argparse.Namespace) -> int:
         print(f"error: {settings_path} 'hooks' is not an object; not touching it", file=sys.stderr)
         return 1
 
+    # PostToolUseFailure is where current Claude Code reports failed tool
+    # calls (PostToolUse fires only on success). The PostToolUse hook stays
+    # registered for older Claude Code versions.
     added_post = _ensure_hook(hooks, "PostToolUse", cmd_post, matcher="Bash")
+    added_failure = _ensure_hook(hooks, "PostToolUseFailure", cmd_failure, matcher="Bash")
     added_session = _ensure_hook(hooks, "SessionStart", cmd_session)
 
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
@@ -119,7 +126,7 @@ def _cmd_init_claude_code(args: argparse.Namespace) -> int:
     print(f"  hooks written to : {hooks_dir}")
     print(f"  memory data dir  : {data_dir}")
     print(f"  settings updated : {settings_path}")
-    if not (added_post and added_session):
+    if not (added_post and added_failure and added_session):
         print("  (hooks were already present — nothing duplicated)")
     print("\nRestart Claude Code (or start a new session) to pick them up.")
     print("Failed Bash commands now become lessons; each new session is briefed on past pitfalls.")
@@ -132,7 +139,16 @@ def _open_memory(data_dir: str):  # type: ignore[no-untyped-def]
     return AgentMemory(os.path.expanduser(data_dir))
 
 
+def _print_data_dir(data_dir: str) -> None:
+    """Always show WHERE we read from — the #1 confusion is running `errlore
+    stats` next to a quickstart ./agent_memory dir while the CLI default
+    points at ~/.errlore/claude-code and silently prints zeros."""
+    resolved = os.path.abspath(os.path.expanduser(data_dir))
+    print(f"data dir: {resolved}  (change with --data-dir PATH)", file=sys.stderr)
+
+
 def _cmd_stats(args: argparse.Namespace) -> int:
+    _print_data_dir(args.data_dir)
     stats = _open_memory(args.data_dir).stats()
     if args.json:
         print(json.dumps(stats, indent=2))
@@ -150,6 +166,7 @@ def _cmd_stats(args: argparse.Namespace) -> int:
 
 
 def _cmd_lessons(args: argparse.Namespace) -> int:
+    _print_data_dir(args.data_dir)
     lessons = _open_memory(args.data_dir).lessons(limit=args.limit)
     if not lessons:
         print("(no lessons yet)")

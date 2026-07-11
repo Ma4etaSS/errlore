@@ -32,7 +32,7 @@
   "url": "https://errlore.com/",
   "downloadUrl": "https://pypi.org/project/errlore/",
   "installUrl": "https://pypi.org/project/errlore/",
-  "softwareVersion": "0.1.4",
+  "softwareVersion": "0.2.1",
   "license": "https://opensource.org/licenses/MIT",
   "programmingLanguage": "Python",
   "codeRepository": "https://github.com/Ma4etaSS/errlore",
@@ -227,7 +227,7 @@
 mem = AgentMemory(<span class="c-str">"./agent_memory"</span>)
 
 <span class="c-com"># 1. agent failed — record it</span>
-err = mem.log_error(<span class="c-str">"gpt-5.5"</span>, <span class="c-str">"extraction"</span>, error=<span class="c-str">"hallucinated dates"</span>)
+err = mem.log_error(<span class="c-str">"gpt-5.6"</span>, <span class="c-str">"extraction"</span>, error=<span class="c-str">"hallucinated dates"</span>)
 
 <span class="c-com"># 2. you fixed it — extract the lesson</span>
 mem.resolve(err, <span class="c-str">"added validation"</span>,
@@ -235,7 +235,7 @@ mem.resolve(err, <span class="c-str">"added validation"</span>,
 
 <span class="c-com"># 3. next similar task — memory speaks up</span>
 task = <span class="c-str">"extract dates from contract"</span>
-inj = mem.inject_for(task, model=<span class="c-str">"gpt-5.5"</span>, task_type=<span class="c-str">"extraction"</span>)
+inj = mem.inject_for(task, model=<span class="c-str">"gpt-5.6"</span>, task_type=<span class="c-str">"extraction"</span>)
 prompt = task + <span class="c-str">"\n\n"</span> + inj.text
 <span class="c-out"># [LESSONS FROM PAST FAILURES]
 # - UnclassifiedError: hallucinated dates -> For date extraction,

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-11
+
+### Fixed
+- **Claude Code integration: failed Bash commands are now actually captured.**
+  Current Claude Code routes tool failures to the dedicated
+  `PostToolUseFailure` event (`PostToolUse` fires only on success), so the
+  previous hook never saw a failure — the loop was silently inert. New
+  `post_tool_use_failure()` handler parses the real payload (top-level `error`
+  string, `is_interrupt` guard); `errlore init claude-code` now installs and
+  registers all three hooks. The legacy PostToolUse handler stays for older
+  Claude Code versions. Verified against the official hooks reference; example
+  shims and `settings.json.example` updated to match.
+- `errlore stats` / `errlore lessons` now print the resolved data dir (to
+  stderr) — running them next to a quickstart `./agent_memory` while the
+  default points at `~/.errlore/claude-code` silently showed zeros.
+
+### Changed
+- Docs/site model placeholder refreshed `gpt-5.5` → `gpt-5.6` (released
+  2026-07-09); site JSON-LD `softwareVersion` unstuck from 0.1.4.
+
 ## [0.2.0] - 2026-07-11 — "The Proof Release"
 
 The headline benchmark is now proven on all three generality axes:
