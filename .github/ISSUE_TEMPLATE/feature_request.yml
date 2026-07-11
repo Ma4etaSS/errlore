@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a capability or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What repeated pain does this solve? Concrete scenario beats abstraction.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How would we prove it works?
+      description: >
+        errlore ships features with evidence (see CONTRIBUTING). What benchmark
+        or measurable signal would demonstrate this feature's effect?
+    validations:
+      required: true

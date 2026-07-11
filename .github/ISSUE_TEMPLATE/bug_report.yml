@@ -1,0 +1,45 @@
+name: Bug report
+description: Something behaves differently than documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: errlore version
+      description: "`errlore --version` (or `python -c 'import errlore; print(errlore.__version__)'`)"
+      placeholder: "0.2.2"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version & OS
+      placeholder: "3.12 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest snippet that shows the problem (with a temp data dir).
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: stats
+    attributes:
+      label: "`errlore stats --data-dir <your dir>` output (if relevant)"
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues
+          required: true
