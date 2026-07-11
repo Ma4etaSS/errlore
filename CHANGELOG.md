@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convention). On claude-haiku-4-5 both go 100% → 0% (24/24 → 0/24, McNemar
   p=1.19e-07), confirming the store-and-inject effect isn't specific to the
   original toy families. Report + raw outputs in `benchmarks/results/`.
+- **Model-diversity: full grid on gemma-4-31b** (Cerebras — a different model
+  family): 66.7% → 20.0% fail (70.0% reduction, McNemar p=2.6e-13),
+  knowledge-gap 83%, capability-gap −20%; branch_name and status_code flip
+  100%→0% here too. One honest wrinkle documented: `csv_order` does not
+  transfer to gemma (12→12) while it flips to 0 on Haiku — lesson-following is
+  itself model-dependent at the margin. `BENCH_MODEL` env override added for
+  running any backend against a specific model.
 
 ## [0.1.4] - 2026-07-09
 

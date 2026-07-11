@@ -110,6 +110,11 @@ Split by error class:
 plus three fresh RNG seeds — different task instances). Every run: overall
 reduction **66.7–69.8%**, exact McNemar **p between 8.4e-12 and 1.8e-9**,
 knowledge-gap reduction **95–100%**, capability-gap **−12% to 0%** (no help).
+**Cross-model:** the same grid on **gemma-4-31b** (a different model family)
+lands at **70.0% reduction** (66.7% → 20.0%, p = 2.6e-13), knowledge-gap 83%,
+capability-gap −20% — same effect, same honest boundary. **Task-generality:**
+two fresh realistic-convention families (an arbitrary internal status enum and
+a non-standard git branch convention) go **100% → 0%** on both models.
 Full table + per-run reports:
 [benchmarks/results/REPRODUCIBILITY_2026-07-11.md](benchmarks/results/REPRODUCIBILITY_2026-07-11.md).
 

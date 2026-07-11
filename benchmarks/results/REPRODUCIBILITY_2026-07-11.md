@@ -73,10 +73,33 @@ arm A fails 100% by construction (the conventions are genuinely unguessable);
 arm B fixes 100% once the convention is captured. The store-and-inject loop
 generalizes cleanly to new, realistic conventions — not just the seed families.
 
+## Model diversity (gemma-4-31b — a different model family)
+
+The same full grid (all 10 families, default 6 seed / 12 test) on
+**gemma-4-31b** via Cerebras — a completely different model family from
+claude-haiku-4-5:
+
+| arm | failures | fail rate |
+|-----|----------|-----------|
+| A plain | 80/120 | 66.7% |
+| B errlore | 24/120 | **20.0%** |
+
+Exact McNemar p = 2.631e-13; repeat-error reduction **70.0%** (fixed 61,
+broke 5). Knowledge-gap 70/72 → 12/72 (**83%**); capability-gap 10/48 → 12/48
+(**−20%**) — the honest boundary reproduces across model families too. The two
+realistic-convention families flip identically: branch_name 12→0,
+status_code 12→0.
+
+One honest wrinkle: `csv_order` did **not** transfer to gemma (12→12 — the
+lesson is injected but gemma keeps emitting the wrong column order), while it
+flips to 0 on Haiku. Lesson-following is itself model-dependent at the margin;
+we report it rather than hide it.
+
 ## One-line claim
 
-> Across 5 independent runs, errlore cut claude-haiku-4-5's repeat-error rate by
-> ~68% (65% → 21%, McNemar p < 2e-9 every run), by fixing 95–100% of
-> knowledge-gap errors — and honestly does nothing for capability-gap errors.
-> Two fresh realistic-convention families (arbitrary status enum, non-standard
-> branch naming) went 100% → 0%, so the effect is not specific to the seed set.
+> On two different model families (claude-haiku-4-5 across 5 runs,
+> gemma-4-31b), errlore cut the repeat-error rate by ~68–70% (≈66% → ≈20%,
+> McNemar p ≤ 2e-9 every run), by fixing 83–100% of knowledge-gap errors —
+> and honestly does nothing for capability-gap errors on either family. Two
+> fresh realistic-convention families (arbitrary status enum, non-standard
+> branch naming) went 100% → 0% on both models.
