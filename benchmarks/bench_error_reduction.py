@@ -206,6 +206,49 @@ def fam_csv_order(rng: random.Random, n: int) -> list[Task]:
         ))
     return tasks
 
+def fam_status_code(rng: random.Random, n: int) -> list[Task]:
+    # A purely arbitrary internal enum the model cannot possibly guess — the
+    # cleanest knowledge-gap: a lookup that only our lesson supplies.
+    mapping = {
+        "active": "A1", "paused": "P0", "cancelled": "X9",
+        "trial": "T2", "expired": "E7", "pending": "N3",
+    }
+    words = list(mapping)
+    tasks = []
+    for _ in range(n):
+        w = rng.choice(words)
+        tasks.append(Task(
+            "status_code",
+            f'Map the subscription status "{w}" to our internal status code. '
+            f"The LAST LINE of your reply must be the code alone.",
+            mapping[w],
+        ))
+    return tasks
+
+
+def fam_branch_name(rng: random.Random, n: int) -> list[Task]:
+    # A deliberately non-standard git branch convention. The model's default
+    # guess is feat/<ticket>-<kebab>; ours is wip.<TICKET>.<snake>. Unguessable
+    # specifics, but trivially executable once the convention is known.
+    tickets = ["plat", "core", "pay", "auth", "data", "ui"]
+    descs = [
+        "fix login redirect", "add retry budget", "cache warm job",
+        "trim quiz steps", "backfill emails", "rotate api keys",
+    ]
+    tasks = []
+    for _ in range(n):
+        t = rng.choice(tickets)
+        num = rng.randint(100, 999)
+        d = rng.choice(descs)
+        tasks.append(Task(
+            "branch_name",
+            f'Create a git branch name for ticket {t}-{num} to "{d}". '
+            f"The LAST LINE must be the branch name alone.",
+            f"wip.{t.upper()}-{num}.{d.replace(' ', '_')}",
+        ))
+    return tasks
+
+
 # capability-gap families (model skill limits) + knowledge-gap families
 # (workspace conventions) — reported separately.
 FAMILIES = {
@@ -217,9 +260,12 @@ FAMILIES = {
     "id_norm": fam_id_norm,
     "round_rule": fam_round_rule,
     "csv_order": fam_csv_order,
+    "status_code": fam_status_code,
+    "branch_name": fam_branch_name,
 }
 
-KNOWLEDGE_GAP = {"log_ts", "id_norm", "round_rule", "csv_order"}
+KNOWLEDGE_GAP = {"log_ts", "id_norm", "round_rule", "csv_order",
+                 "status_code", "branch_name"}
 
 # Pre-authored corrective lessons (the "human fix", written before pass 2).
 LESSONS = {
@@ -231,6 +277,8 @@ LESSONS = {
     "id_norm": "Our user-id normalization rule: lowercase everything, remove all dashes, then add the prefix u_. Example: Anna-Koval-42 -> u_annakoval42.",
     "round_rule": "Our finance rule ALWAYS truncates (rounds toward zero) to 2 decimals - never round half up or to even. Example: 123.456 -> 123.45, and 99.999 -> 99.99.",
     "csv_order": "Our canonical CSV column order is: email,id,name (regardless of the order fields appear in the source record). No spaces after commas, no quotes.",
+    "status_code": "Our internal subscription status codes: active=A1, paused=P0, cancelled=X9, trial=T2, expired=E7, pending=N3. Output the code ALONE on the last line.",
+    "branch_name": "Our git branch convention is wip.<TICKET>.<snake_case_description>: the literal prefix 'wip', DOT separators, the ticket in UPPERCASE, and the description in snake_case. Example: ticket plat-123 'fix login redirect' -> wip.PLAT-123.fix_login_redirect.",
 }
 
 SYSTEM = "You are a precise assistant. Follow the required output format exactly."

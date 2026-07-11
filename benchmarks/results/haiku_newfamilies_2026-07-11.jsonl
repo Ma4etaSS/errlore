@@ -1,0 +1,21 @@
+# errlore error-reduction A/B — model claude-haiku-4-5
+
+tasks (test): 24 | families active (had seed failures): ['branch_name', 'status_code']
+
+| arm | failures | fail rate |
+|---|---|---|
+| A plain | 24/24 | 100.0% |
+| B errlore | 0/24 | 0.0% |
+
+discordant pairs: errlore fixed 24, errlore broke 0
+exact McNemar p = 1.192e-07
+repeat-error reduction: 100.0%
+
+### KNOWLEDGE-GAP (workspace conventions): A 24/24 -> B 0/24 | reduction 100%
+
+per-family (fail A -> fail B):
+- branch_name: 12 -> 0 *lesson active*
+- status_code: 12 -> 0 *lesson active*
+
+raw outputs: /tmp/errlore_ab_j_g9ynhq/raw_outputs.jsonl
+errlore stats: {'errors_total': 12, 'errors_resolved': 12, 'errors_unresolved': 0, 'lessons_total': 6, 'lessons_applied': 6, 'pending_injections': 0, 'trust': {'claude-haiku-4-5': 0.92}}

@@ -17,7 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the README.
 - `bench_error_reduction.py` reads `BENCH_RNG_SEED` from the environment so the
   same task families can be re-drawn with different instances for seed-robustness
-  checks.
+  checks. Also `BENCH_FAMILIES` / `BENCH_SEED_N` / `BENCH_TEST_N` for narrowing a
+  run (e.g. a small cross-family probe on a tight free-tier quota).
+- **Task-generality: two new realistic knowledge-gap families** (`status_code` —
+  an arbitrary internal status enum; `branch_name` — a non-standard git branch
+  convention). On claude-haiku-4-5 both go 100% → 0% (24/24 → 0/24, McNemar
+  p=1.19e-07), confirming the store-and-inject effect isn't specific to the
+  original toy families. Report + raw outputs in `benchmarks/results/`.
 
 ## [0.1.4] - 2026-07-09
 

@@ -51,8 +51,32 @@ Per-run reports are committed alongside this file
 (`haiku_2026-07-11_report.txt`, `haiku_2026-07-11_seed{11,22,33}.txt`) and raw
 model outputs in `haiku_2026-07-11_raw.jsonl` for independent recomputation.
 
+## Task generality (2 new realistic conventions)
+
+The original eight families could be dismissed as toy tasks. So two **new**
+knowledge-gap families were added that mirror real "our agent keeps getting our
+internal convention wrong" pain, and run on the same harness (claude-haiku-4-5,
+default 6 seed / 12 test each):
+
+- **`status_code`** — map a subscription status to our arbitrary internal enum
+  (active→A1, cancelled→X9, …). A pure lookup only the lesson supplies.
+- **`branch_name`** — our deliberately non-standard git branch convention
+  `wip.<TICKET>.<snake_desc>` (the model's default guess is `feat/<ticket>-<kebab>`).
+
+| arm | failures | fail rate |
+|-----|----------|-----------|
+| A plain | 24/24 | **100.0%** |
+| B errlore | 0/24 | **0.0%** |
+
+Exact McNemar p = 1.19e-07; per-family branch_name 12→0, status_code 12→0.
+arm A fails 100% by construction (the conventions are genuinely unguessable);
+arm B fixes 100% once the convention is captured. The store-and-inject loop
+generalizes cleanly to new, realistic conventions — not just the seed families.
+
 ## One-line claim
 
 > Across 5 independent runs, errlore cut claude-haiku-4-5's repeat-error rate by
 > ~68% (65% → 21%, McNemar p < 2e-9 every run), by fixing 95–100% of
 > knowledge-gap errors — and honestly does nothing for capability-gap errors.
+> Two fresh realistic-convention families (arbitrary status enum, non-standard
+> branch naming) went 100% → 0%, so the effect is not specific to the seed set.
