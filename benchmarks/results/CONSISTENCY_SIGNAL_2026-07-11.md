@@ -38,12 +38,26 @@ correctness*, not to *detecting (some) incorrectness*:
 > to the systematic component (here: 52% of the mass), where
 > confidently-wrong outputs are as stable as correct ones.
 
+**The full honest operating profile of the warning tier** (same table):
+precision 86%, **recall 19%** (12 of 62 wrong answers flagged — the signal
+sees only the stochastic slice), false-alarm on correct answers 6% (2/34),
+and **residual wrongness after a PASSED consistency check: 61%** (50/82 on
+this failure-rich grid). In production terms: the residual risk after passing
+the check approximately equals the systematic-error share s of the surface —
+the check cannot reduce it, only the stochastic component. Thresholds derive
+directly: P(wrong | inconsistent) stays high for any reasonable similarity
+cutoff (inconsistency only arises in the stochastic regime, where at least
+one of the disagreeing runs must be wrong); P(wrong | consistent) ≈ s and is
+irreducible by this signal class.
+
 **Product consequence.** On validator-less surfaces, shadow-style machinery
 can honestly ship a *warning tier* — "this output is unstable across re-runs,
-likely wrong" — at the cost of one sampled re-run. It can never ship a
-*verified tier* there. Verification stays scoped to validator-equipped
-surfaces (docs/SHADOW_MODE_SPEC.md); instability-flagging extends honestly
-beyond them.
+likely wrong" (86% precision) — at the cost of one sampled re-run, while
+stating plainly that it catches only ~a fifth of errors and that a passed
+check is NOT reassurance. It can never ship a *verified tier* there.
+Verification stays scoped to validator-equipped surfaces
+(docs/SHADOW_MODE_SPEC.md); instability-flagging extends honestly beyond
+them.
 
 **Caveats.** This grid is failure-rich by construction, so 52% systematic-
 wrong is not a production rate; the transferable result is the asymmetry
