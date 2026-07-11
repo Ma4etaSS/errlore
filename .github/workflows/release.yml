@@ -1,12 +1,12 @@
 name: release
 
 # Tag-driven release: push a v* tag -> full test gate -> build sdist+wheel ->
-# publish to PyPI via trusted publishing (OIDC; no long-lived token in CI).
+# publish to PyPI (API token from the PYPI_API_TOKEN repo secret) -> GitHub
+# release with artifacts. skip-existing tolerates re-runs after a manual
+# twine upload of the same version.
 #
-# One-time PyPI setup (owner): pypi.org -> project errlore -> Publishing ->
-# add GitHub publisher (owner=Ma4etaSS, repo=errlore, workflow=release.yml,
-# environment=pypi). Until that's configured the publish step fails cleanly
-# and the build artifacts are still attached to the GitHub release.
+# Trusted publishing (OIDC) is the eventual upgrade — swap the password for
+# permissions: id-token: write once the PyPI publisher config is verified.
 
 on:
   push:
@@ -44,14 +44,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
-    permissions:
-      id-token: write  # OIDC for PyPI trusted publishing
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
 
   github-release:
     needs: build
