@@ -371,6 +371,15 @@ def main() -> int:
     if args.pilot:
         fams = {k: fams[k] for k in ("mult4", "nth_char")}
         seed_n, test_n = 3, 3
+    # Env overrides for tight-quota probes (e.g. a cross-family run on a
+    # 20-req/day free tier): BENCH_FAMILIES=id_norm,log_ts BENCH_SEED_N=1
+    # BENCH_TEST_N=1. Purely for exploratory small runs; the committed
+    # headline numbers use the full default grid.
+    if os.environ.get("BENCH_FAMILIES"):
+        want = {f.strip() for f in os.environ["BENCH_FAMILIES"].split(",") if f.strip()}
+        fams = {k: v for k, v in fams.items() if k in want}
+    seed_n = int(os.environ.get("BENCH_SEED_N", seed_n))
+    test_n = int(os.environ.get("BENCH_TEST_N", test_n))
 
     seed_tasks: list[Task] = []
     test_tasks: list[Task] = []
