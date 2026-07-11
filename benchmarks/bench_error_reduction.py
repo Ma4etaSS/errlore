@@ -43,7 +43,7 @@ from openai import OpenAI
 
 from errlore import AgentMemory
 
-RNG_SEED = 20260706
+RNG_SEED = int(os.environ.get("BENCH_RNG_SEED", "20260706"))
 SEED_PER_FAMILY = 6
 TEST_PER_FAMILY = 12
 

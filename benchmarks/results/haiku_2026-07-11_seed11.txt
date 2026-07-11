@@ -1,0 +1,35 @@
+[pass1] 48 seed tasks, model=claude-haiku-4-5
+[pass1] failures by family: {'nth_char': 1, 'letter_sent': 3, 'reverse': 4, 'log_ts': 6, 'id_norm': 6, 'round_rule': 4, 'csv_order': 6}
+[pass2] 96 test tasks x 2 arms
+
+# errlore error-reduction A/B — model claude-haiku-4-5
+
+tasks (test): 96 | families active (had seed failures): ['csv_order', 'id_norm', 'letter_sent', 'log_ts', 'nth_char', 'reverse', 'round_rule']
+
+| arm | failures | fail rate |
+|---|---|---|
+| A plain | 60/96 | 62.5% |
+| B errlore | 20/96 | 20.8% |
+
+discordant pairs: errlore fixed 43, errlore broke 3
+exact McNemar p = 4.622e-10
+repeat-error reduction: 66.7%
+
+### KNOWLEDGE-GAP (workspace conventions): A 44/48 -> B 2/48 | reduction 95%
+
+### CAPABILITY-GAP (model skill limits): A 16/48 -> B 18/48 | reduction -12%
+
+per-family (fail A -> fail B):
+- csv_order: 12 -> 0 *lesson active*
+- id_norm: 12 -> 2 *lesson active*
+- letter_sent: 5 -> 6 *lesson active*
+- log_ts: 12 -> 0 *lesson active*
+- mult4: 0 -> 0
+- nth_char: 0 -> 0 *lesson active*
+- reverse: 11 -> 12 *lesson active*
+- round_rule: 8 -> 0 *lesson active*
+
+raw outputs: /tmp/errlore_ab_4qizuh9h/raw_outputs.jsonl
+errlore stats: {'errors_total': 30, 'errors_resolved': 30, 'errors_unresolved': 0, 'lessons_total': 20, 'lessons_applied': 17, 'pending_injections': 0, 'trust': {'claude-haiku-4-5': 0.92}}
+
+[saved: /tmp/bench_seed_11.jsonl]

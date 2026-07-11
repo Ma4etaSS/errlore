@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Reproducibility evidence for the error-reduction benchmark**
+  (`benchmarks/results/REPRODUCIBILITY_2026-07-11.md`): the headline A/B is now
+  reproduced across 5 independent runs on claude-haiku-4-5 (two default-seed
+  runs 5 days apart + three fresh RNG seeds). Every run: 66.7–69.8% repeat-error
+  reduction, exact McNemar p between 8.4e-12 and 1.8e-9, knowledge-gap reduction
+  95–100%, capability-gap −12% to 0%. Resolves the prior "single run" caveat in
+  the README.
+- `bench_error_reduction.py` reads `BENCH_RNG_SEED` from the environment so the
+  same task families can be re-drawn with different instances for seed-robustness
+  checks.
+
 ## [0.1.4] - 2026-07-09
 
 ### Added

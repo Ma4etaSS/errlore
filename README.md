@@ -106,10 +106,17 @@ Split by error class:
   20/48 -- errlore did **not** help and slightly hurt. Memory fixes what the
   model doesn't know, not what it can't do.
 
-**Caveats, up front:** this is a single run at temperature 0 (LLM output is
-still slightly non-deterministic, so exact fine-grained counts vary between
-runs — the large knowledge-gap effect is robust; the capability-gap delta is
-within noise). The knowledge-gap task families use conventions the model
+**Reproduced across 5 independent runs** (two on the default seed 5 days apart,
+plus three fresh RNG seeds — different task instances). Every run: overall
+reduction **66.7–69.8%**, exact McNemar **p between 8.4e-12 and 1.8e-9**,
+knowledge-gap reduction **95–100%**, capability-gap **−12% to 0%** (no help).
+Full table + per-run reports:
+[benchmarks/results/REPRODUCIBILITY_2026-07-11.md](benchmarks/results/REPRODUCIBILITY_2026-07-11.md).
+
+**Caveats, up front:** temperature 0 still leaves LLM output slightly
+non-deterministic, so exact fine-grained counts vary run to run — the large
+knowledge-gap effect is robust across all five runs; the capability-gap delta
+stays within noise. The knowledge-gap task families use conventions the model
 demonstrably can't guess, which is the point — but it means the headline is
 "the loop works," not "90% fewer errors everywhere."
 
