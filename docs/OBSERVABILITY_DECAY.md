@@ -53,6 +53,27 @@ re-queries of the same verifier. Therefore:
 Pleasing symmetry: the same decomposition that gave the one-sided
 consistency result for generators (Q2) gives the ceiling for verifiers (Q7).
 
+## Formal statement (converged with external analysis)
+
+Verifier error decomposes as Err_V ≈ s_V + (1−s_V)·ε_V. Repetition/voting
+drives the ε_V term down exponentially (Condorcet/Chernoff) at O(k) cost;
+no amount of re-querying touches s_V. Hence the ceiling theorem, final form:
+
+    asymptotic system quality ≤ 1 − s_V(cheapest affordable verifier)
+
+with the corollary that a noisy-but-unbiased verifier (s_V=0) imposes NO
+ceiling — amplification suffices. The bound lives entirely in systematic
+blindness.
+
+**The one open thread this creates:** s_V of a COALITION. Repetition of one
+verifier cannot reduce its systematic floor, but a coalition of verifiers
+with DIVERSE systematic blindspots can — joint s_V is the measure of the
+intersection of their blind regions, which diversity shrinks. The Condorcet
+move for the systematic component is diversity across verifiers, not
+repetition of one. Designing bias-diverse verifier ensembles (and measuring
+blindspot overlap) is the concrete research direction that falls out of the
+whole exchange. (Deliberately NOT pursued pre-launch.)
+
 ## Confirmation from known systems
 
 The law retro-predicts the last decade of self-improvement successes:
