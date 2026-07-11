@@ -95,6 +95,28 @@ lesson is injected but gemma keeps emitting the wrong column order), while it
 flips to 0 on Haiku. Lesson-following is itself model-dependent at the margin;
 we report it rather than hide it.
 
+
+## Counterfactual signal quality: injection is not free (interference)
+
+Recomputed 2026-07-11 from the committed raw outputs, pairing each test task's
+plain (A) and injected (B) runs:
+
+| run | harm: A passed → B broke | fix: A failed → B fixed |
+|-----|--------------------------|--------------------------|
+| claude-haiku-4-5 (full grid) | **5/34 (15%)** | 47/62 (76%) |
+| gemma-4-31b (full grid) | **5/40 (12%)** | 55/74 (74%) |
+| realistic conventions (Haiku) | 0/0 | 18/18 (100%) |
+
+Two consequences. First, **lesson injection breaks 12–15% of previously
+passing tasks** (concentrated in the capability-gap families) — so injection
+must be selective and verified, which is precisely what a static conventions
+document dumped into every prompt cannot do. Second, on a mature low-failure
+system a shadow counterfactual re-run (inject in parallel, never in the main
+path, compare with the same deterministic validators) gets abundant honest
+signal from the success mass — "did the lesson NOT break what worked" — plus
+fix-confirmation on the rare failures. That harm-guard + graduation-gate
+mechanism is the planned 0.3.x direction.
+
 ## One-line claim
 
 > On two different model families (claude-haiku-4-5 across 5 runs,
