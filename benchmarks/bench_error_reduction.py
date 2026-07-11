@@ -412,6 +412,7 @@ def main() -> int:
     args = ap.parse_args()
 
     client, model = make_client(args.backend)
+    model = os.environ.get("BENCH_MODEL", model)
     rng = random.Random(RNG_SEED)
 
     fams = dict(FAMILIES)
