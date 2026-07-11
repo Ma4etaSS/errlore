@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "errlore"
-version = "0.1.4"
+version = "0.2.0"
 description = "Memory for AI agents that learns from failures: lessons, known-issues injection, and per-model trust — embedded, file-based, no server."
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 authors = [{ name = "Ma4etaSS" }]
 keywords = ["llm", "agents", "memory", "lessons", "error-learning", "trust"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

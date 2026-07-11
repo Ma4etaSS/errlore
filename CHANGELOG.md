@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-11 — "The Proof Release"
+
+The headline benchmark is now proven on all three generality axes:
+**seed-robustness** (5 independent runs), **task-generality** (fresh realistic
+convention families), and **model-diversity** (Anthropic + Gemma). Development
+status bumped Alpha → Beta.
 
 ### Added
 - **Reproducibility evidence for the error-reduction benchmark**

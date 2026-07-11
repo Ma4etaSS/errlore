@@ -1,0 +1,74 @@
+name: release
+
+# Tag-driven release: push a v* tag -> full test gate -> build sdist+wheel ->
+# publish to PyPI via trusted publishing (OIDC; no long-lived token in CI).
+#
+# One-time PyPI setup (owner): pypi.org -> project errlore -> Publishing ->
+# add GitHub publisher (owner=Ma4etaSS, repo=errlore, workflow=release.yml,
+# environment=pypi). Until that's configured the publish step fails cleanly
+# and the build artifacts are still attached to the GitHub release.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[dev]
+      - run: ruff check .
+      - run: mypy
+      - run: pytest --cov=errlore --cov-fail-under=80
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create GitHub release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "See CHANGELOG.md for details." || \
+          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
