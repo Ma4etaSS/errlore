@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Warning tier: self-consistency as an honest wrong-answer signal.** New
+  `errlore.consistency` (`check_consistency` + `AgentMemory.check_consistency`):
+  on validator-less surfaces, feed 2+ independent runs of the same prompt and
+  errlore flags disagreement as "unstable — likely wrong" at ~86% precision
+  (`benchmarks/results/CONSISTENCY_SIGNAL_2026-07-11.md`). Deliberately
+  one-sided: a *stable* result is never presented as verification (61% residual
+  wrongness on our grid). `final_line`/`full` modes, optional `similarity`
+  loosening, and — when a model is named — an unstable verdict is logged as a
+  tracked error. errlore never calls the model (offline ethos: the caller
+  supplies outputs). Zero new dependencies.
 - **Harm gate: interference-guarded lesson injection.** Lessons now track
   `success_count`/`failure_count` separately (the old single confidence scalar
   erased this signal — a lesson that helped 3× and hurt 3× looked untouched).

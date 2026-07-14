@@ -27,6 +27,10 @@ Your agent keeps making the same mistakes. errlore fixes that:
   measured 12–15%). errlore tracks each lesson's failures separately and withholds one
   from injection once a Beta-Binomial bar says its harm rate is credibly too high — so a
   bad lesson can't keep hurting you. A static conventions file can't do this.
+- **Warning tier** *(validator-less surfaces)* -- no oracle? Run the prompt twice and
+  pass both to `check_consistency`: disagreement flags "likely wrong" at ~86% precision.
+  Honestly one-sided — a *stable* result is explicitly **not** verification. Cheap
+  wrong-answer detector, never a correctness guarantee.
 
 Embedded, file-based (JSONL), no server, no database, no API keys required.
 Works fully offline. Your data never leaves your machine.
@@ -252,6 +256,7 @@ you only need them for advanced use.
 | `add_lesson(pattern, solution)` | Add a lesson directly (sanitized).            |
 | `lessons(limit)`              | List all lessons (sorted by confidence).       |
 | `quarantined_lessons()`       | Lessons the harm gate withholds from injection.|
+| `check_consistency(outputs)`  | Warning tier: flag likely-wrong via re-run disagreement. |
 | `best_model(domain)`          | Model with the highest trust weight *(experimental)*. |
 | `model_penalty(model, task_type)` | Error-history penalty `[0, 1]`.            |
 | `pending_injections()`        | Injections not yet reported.                   |

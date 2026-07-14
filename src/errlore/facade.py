@@ -516,6 +516,52 @@ class AgentMemory:
             return all_lessons[:limit]
         return all_lessons
 
+    def check_consistency(
+        self,
+        outputs: list[str],
+        *,
+        mode: str = "final_line",
+        similarity: float = 1.0,
+        model: str | None = None,
+        task_type: str = "",
+    ) -> Any:
+        """Flag likely-wrong output via re-run consistency (warning tier).
+
+        Thin wrapper over :func:`errlore.consistency.check_consistency` for
+        validator-less surfaces.  When *model* is given and the outputs are
+        unstable, the instability is also recorded via :meth:`log_error`, so a
+        recurring flaky surface becomes a tracked failure you can resolve into
+        a lesson.
+
+        See :mod:`errlore.consistency` for the honest one-sided operating
+        profile (86% precision, ~19% recall; a stable result is not
+        verification).
+
+        Args:
+            outputs: Two or more independent runs of the same prompt.
+            mode: ``"final_line"`` (default) or ``"full"``.
+            similarity: Equivalence threshold in ``(0, 1]`` (1.0 = strict).
+            model: If set, an unstable verdict is logged as an error for it.
+            task_type: Task category for the logged error.
+
+        Returns:
+            :class:`~errlore.consistency.ConsistencyResult`.
+        """
+        from errlore.consistency import check_consistency
+
+        result = check_consistency(outputs, mode=mode, similarity=similarity)
+        if model is not None and not result.stable:
+            self.log_error(
+                model,
+                task_type or "consistency",
+                error="unstable output across re-runs",
+                message=(
+                    f"consistency flag: {result.distinct} distinct answers in "
+                    f"{result.n_runs} runs (agreement {result.agreement:.2f})"
+                ),
+            )
+        return result
+
     def quarantined_lessons(self) -> list[Any]:
         """Return lessons the harm gate currently withholds from injection.
 
