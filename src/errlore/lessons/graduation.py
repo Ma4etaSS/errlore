@@ -41,9 +41,17 @@ import math
 _ALPHA_H = 2.0
 _BETA_H = 38.0
 
+# Fix-side priors (SHADOW_MODE_SPEC.md).
+# p_f ~ Beta(alpha_f, beta_f), prior mean 10%, weak.
+_ALPHA_F = 1.0
+_BETA_F = 9.0
+
 # Decision thresholds (validated numerically in the spec).
 HARM_MAX = 0.05  # h_max: a lesson is "harmful" if its harm rate exceeds this.
+FIX_MIN = 0.10  # f_min: a lesson is "useful" if its fix rate exceeds this.
 QUARANTINE_CONF = 0.95  # quarantine when Pr(p_h > HARM_MAX) exceeds this.
+PROMOTE_SAFE_CONF = 0.95  # promote needs Pr(p_h <= HARM_MAX) above this...
+PROMOTE_USEFUL_CONF = 0.50  # ...AND Pr(p_f > FIX_MIN) above this.
 
 
 def _betacf(a: float, b: float, x: float) -> float:
@@ -149,3 +157,64 @@ def is_quarantined(success_count: int, failure_count: int) -> bool:
         ``True`` if the lesson is quarantined (do not inject).
     """
     return harm_probability(success_count, failure_count) > QUARANTINE_CONF
+
+
+# ---------------------------------------------------------------------------
+# Shadow-mode graduation (counterfactual trials -> promote/hold/quarantine)
+# ---------------------------------------------------------------------------
+#
+# Counterfactual trials feed two per-lesson posteriors (SHADOW_MODE_SPEC.md):
+#
+#   Success trial (baseline PASSED):  injected broke it -> harm_break else harm_keep
+#   Failure trial (baseline FAILED):  injected fixed it -> fix_yes    else fix_no
+#
+# harm posterior: Beta(_ALPHA_H + harm_break, _BETA_H + harm_keep)
+# fix  posterior: Beta(_ALPHA_F + fix_yes,    _BETA_F + fix_no)
+
+
+def harm_clear_probability(harm_break: int, harm_keep: int) -> float:
+    """``Pr(p_h <= HARM_MAX)`` under the counterfactual harm posterior."""
+    return reg_incomplete_beta(
+        HARM_MAX, _ALPHA_H + max(0, harm_break), _BETA_H + max(0, harm_keep)
+    )
+
+
+def fix_useful_probability(fix_yes: int, fix_no: int) -> float:
+    """``Pr(p_f > FIX_MIN)`` under the counterfactual fix posterior."""
+    return beta_sf(FIX_MIN, _ALPHA_F + max(0, fix_yes), _BETA_F + max(0, fix_no))
+
+
+def decide(
+    harm_break: int,
+    harm_keep: int,
+    fix_yes: int,
+    fix_no: int,
+) -> str:
+    """Graduation verdict for a lesson from its counterfactual trial counts.
+
+    Implements the validated two-gate rule from SHADOW_MODE_SPEC.md:
+
+    * ``"quarantine"`` when ``Pr(p_h > HARM_MAX) > QUARANTINE_CONF``
+      (harm gate; checked first — safety dominates).
+    * ``"promote"`` when ``Pr(p_h <= HARM_MAX) > PROMOTE_SAFE_CONF`` AND
+      ``Pr(p_f > FIX_MIN) > PROMOTE_USEFUL_CONF`` (safe enough AND useful).
+    * ``"hold"`` otherwise (insufficient evidence either way).
+
+    The rule is asymmetric by design: strict on harm (abundant signal), lenient
+    on usefulness (rare signal). Calibration anchors from the spec: quarantine
+    at 5 harm-breaks / 20 success-trials; promotion needs ~60 clean
+    success-trials on the safety side and a single observed fix on the
+    usefulness side.
+
+    Returns:
+        One of ``"promote"``, ``"hold"``, ``"quarantine"``.
+    """
+    harm_break = max(0, harm_break)
+    harm_keep = max(0, harm_keep)
+    if beta_sf(HARM_MAX, _ALPHA_H + harm_break, _BETA_H + harm_keep) > QUARANTINE_CONF:
+        return "quarantine"
+    safe = harm_clear_probability(harm_break, harm_keep) > PROMOTE_SAFE_CONF
+    useful = fix_useful_probability(fix_yes, fix_no) > PROMOTE_USEFUL_CONF
+    if safe and useful:
+        return "promote"
+    return "hold"

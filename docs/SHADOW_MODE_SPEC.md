@@ -1,8 +1,11 @@
-# Shadow mode — 0.3.x design spec (accepted, build after launch)
+# Shadow mode — 0.3.x design spec
 
-*Status: DESIGN ACCEPTED 2026-07-11. Do not implement before the public
-launch. Origin: external analysis (P1 counterfactual proposal) + our
-recomputed interference data + numeric validation of the decision rule.*
+*Status: IMPLEMENTED 2026-07-14 on branch `feature/0.3-harm-gate` (queue +
+per-lesson posteriors + graduation decision + facade wiring; the model/validator
+worker is user-provided by design). Origin: external analysis (P1 counterfactual
+proposal) + our recomputed interference data + numeric validation of the
+decision rule. Every decision-rule anchor below is reproduced by a unit test
+(`tests/test_graduation.py`).*
 
 ## Problem
 

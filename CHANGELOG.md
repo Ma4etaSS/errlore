@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shadow mode: counterfactual graduation.** The full mechanism from
+  `docs/SHADOW_MODE_SPEC.md`. `inject_for(..., mode="shadow")` builds a lesson
+  block for a parallel run that never touches the user's output (and re-includes
+  quarantined lessons — the recovery route a suppressed lesson otherwise lacks).
+  `enqueue_counterfactual()` durably queues the (baseline, injected) pair;
+  your worker re-runs both, scores each with a deterministic validator, and
+  calls `report_counterfactual_outcome(cf_id, baseline_passed, injected_passed)`.
+  Two per-lesson Beta posteriors (harm + fix) drive a `graduation_status()` of
+  `promote` / `hold` / `quarantine` via the validated two-gate rule (strict on
+  harm, lenient on usefulness). `graduated_lessons()` surfaces lessons ready to
+  bake into a permanent surface with their evidence counts. Every spec anchor
+  (quarantine 5/20; promote after ~60 clean trials + 1 fix; fix/harm-clear
+  posteriors 0.387/0.736/0.910/0.961/0.993) is pinned by a unit test. errlore
+  never calls the model/validator — that stays the worker's job. Zero new deps.
 - **Warning tier: self-consistency as an honest wrong-answer signal.** New
   `errlore.consistency` (`check_consistency` + `AgentMemory.check_consistency`):
   on validator-less surfaces, feed 2+ independent runs of the same prompt and

@@ -453,6 +453,78 @@ class LessonStore:
         )
         return True
 
+    def record_counterfactual(
+        self,
+        lesson_id: str,
+        baseline_passed: bool,
+        injected_passed: bool,
+    ) -> bool:
+        """Update a lesson's shadow-mode counters from one counterfactual trial.
+
+        Trial semantics (SHADOW_MODE_SPEC.md):
+
+        * baseline PASSED (success trial): injection broke it -> ``harm_break``,
+          else it kept the pass -> ``harm_keep``.
+        * baseline FAILED (failure trial): injection fixed it -> ``fix_yes``,
+          else it did not -> ``fix_no``.
+
+        Returns:
+            True if the lesson was found and updated, False otherwise.
+        """
+        target: Lesson | None = None
+
+        def _apply(
+            entries: list[dict[str, object]],
+        ) -> list[dict[str, object]] | None:
+            nonlocal target
+            for entry in entries:
+                if entry.get("id") == lesson_id:
+                    les = Lesson.from_dict(entry)
+                    if baseline_passed:
+                        if injected_passed:
+                            les.harm_keep += 1
+                        else:
+                            les.harm_break += 1
+                    else:
+                        if injected_passed:
+                            les.fix_yes += 1
+                        else:
+                            les.fix_no += 1
+                    les.updated_at = _utc_now_iso()
+                    target = les
+                    entry.update(les.to_dict())
+                    return entries
+            return None  # not found, abort write
+
+        with self._lock:
+            self._writer.atomic_update(self._lessons_path, _apply)
+
+        return target is not None
+
+    @staticmethod
+    def graduation_status_of(lesson: Lesson) -> str:
+        """Graduation verdict (``promote``/``hold``/``quarantine``) for a lesson."""
+        from errlore.lessons.graduation import decide
+
+        return decide(
+            lesson.harm_break, lesson.harm_keep, lesson.fix_yes, lesson.fix_no
+        )
+
+    def graduation_status(self, lesson_id: str) -> str | None:
+        """Return the graduation verdict for a lesson, or None if unknown."""
+        for lesson in self._read_lessons():
+            if lesson.id == lesson_id:
+                return self.graduation_status_of(lesson)
+        return None
+
+    def graduated_lessons(self) -> list[Lesson]:
+        """Return lessons whose counterfactual evidence says ``promote``."""
+        return [
+            le
+            for le in self._read_lessons()
+            if self.graduation_status_of(le) == "promote"
+        ]
+
     def decay_unused(self) -> int:
         """Decay confidence of unused lessons.
 

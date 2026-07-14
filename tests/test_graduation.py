@@ -15,6 +15,9 @@ from errlore.lessons.graduation import (
     HARM_MAX,
     QUARANTINE_CONF,
     beta_sf,
+    decide,
+    fix_useful_probability,
+    harm_clear_probability,
     harm_probability,
     is_quarantined,
     reg_incomplete_beta,
@@ -97,3 +100,37 @@ class TestQuarantinePolicy:
     def test_thresholds_are_the_documented_values(self) -> None:
         assert HARM_MAX == 0.05
         assert QUARANTINE_CONF == 0.95
+
+
+class TestGraduationDecision:
+    """decide() and its two posteriors vs the SHADOW_MODE_SPEC.md anchors."""
+
+    def test_fix_side_calibration(self) -> None:
+        assert fix_useful_probability(0, 0) == pytest.approx(0.387, abs=0.002)
+        assert fix_useful_probability(1, 0) == pytest.approx(0.736, abs=0.002)
+        assert fix_useful_probability(1, 4) == pytest.approx(0.585, abs=0.002)
+        assert fix_useful_probability(0, 5) == pytest.approx(0.229, abs=0.002)
+
+    def test_harm_clear_side_calibration(self) -> None:
+        assert harm_clear_probability(0, 40) == pytest.approx(0.910, abs=0.002)
+        assert harm_clear_probability(0, 60) == pytest.approx(0.961, abs=0.002)
+        assert harm_clear_probability(0, 100) == pytest.approx(0.993, abs=0.002)
+
+    def test_fresh_lesson_holds(self) -> None:
+        assert decide(0, 0, 0, 0) == "hold"
+
+    def test_five_harms_in_twenty_quarantines(self) -> None:
+        assert decide(5, 15, 0, 0) == "quarantine"
+
+    def test_safe_and_useful_promotes(self) -> None:
+        assert decide(0, 60, 1, 0) == "promote"
+
+    def test_safe_but_not_useful_holds(self) -> None:
+        assert decide(0, 60, 0, 0) == "hold"
+
+    def test_useful_but_not_safe_holds(self) -> None:
+        assert decide(0, 40, 1, 0) == "hold"
+
+    def test_harm_gate_dominates_even_with_fixes(self) -> None:
+        # A lesson that fixes failures but also breaks passes is quarantined.
+        assert decide(5, 15, 10, 0) == "quarantine"
