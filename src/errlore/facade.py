@@ -310,15 +310,31 @@ class AgentMemory:
             limit=self._max_lessons,
             exclude_quarantined=exclude_quarantined,
         )
-        lesson_ids = [le.id for le in lessons]
 
-        # Build text block.
+        # Build text block.  Sanitize BOTH pattern and solution at the
+        # injection boundary -- this is the definitive gate, so a lesson can
+        # never carry raw JSON/code/control-chars into the prompt regardless of
+        # how it was written (add_lesson's solution, a direct store write, or
+        # legacy data all pass through here).  A lesson whose pattern or
+        # solution does not survive sanitization is dropped from this
+        # injection, and its id is not reinforced.
         parts: list[str] = []
+        lesson_ids: list[str] = []
+        lesson_lines: list[str] = []
+        for le in lessons:
+            safe_pattern = sanitize_lesson_text(le.pattern)
+            safe_solution = sanitize_lesson_text(le.solution)
+            if safe_pattern is None or safe_solution is None:
+                logger.warning(
+                    "Lesson %s dropped from injection: unsanitizable content", le.id
+                )
+                continue
+            lesson_lines.append(f"- {safe_pattern} -> {safe_solution}")
+            lesson_ids.append(le.id)
 
-        if lessons:
+        if lesson_lines:
             parts.append("[LESSONS FROM PAST FAILURES]")
-            for le in lessons:
-                parts.append(f"- {le.pattern} -> {le.solution}")
+            parts.extend(lesson_lines)
 
         # Known issues (model weaknesses + past errors).
         warning = self._injector.build_warning(model, effective_task_type)

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-14
+
+### Security
+- **Lesson `solution` is now sanitized at the injection boundary.** Previously
+  only the lesson *pattern* was sanitized on write; a `solution` set via
+  `add_lesson` (or a legacy/direct-write record) reached the prompt verbatim —
+  raw JSON, code fences, oversized blobs. `inject_for` now runs BOTH pattern
+  and solution through `sanitize_lesson_text` when assembling the block, so no
+  lesson can carry unsanitized content into the prompt regardless of write
+  path; a lesson whose pattern or solution does not survive is dropped from
+  that injection (and not reinforced).
+- **Control characters (ANSI escapes, NUL) are stripped by the sanitizer.**
+  Previously only `\s` runs were collapsed, so `\x1b[…]` / `\x00` survived.
+
+### Fixed
+- A single malformed record (non-coercible `confidence`/counter) no longer
+  crashes every lesson/error read — bad records are skipped with a warning
+  instead of taking down `inject_for`, `stats`, and `lessons()`.
+- `check_consistency` clustering is now transitive (union-find) under
+  `similarity < 1.0`, so `distinct` / `agreement` / `stable` no longer depend
+  on input order. The strict default (exact match) is unchanged.
+
+### Changed
+- `graduation.decide()` evaluates the harm survival function once instead of
+  twice (no behavior change; anchors still pinned by tests).
+
+_Source: a full-project density audit (adversarial review + executable checks)
+run right after 0.3.0._
+
 ## [0.3.0] - 2026-07-14
 
 ### Added

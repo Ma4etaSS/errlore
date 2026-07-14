@@ -286,8 +286,8 @@ you only need them for advanced use.
 - All data is stored in local JSONL files in the directory you specify.
 - Nothing is sent to any server.  errlore itself makes zero network calls.
 - Works fully offline -- no API keys, no accounts, no telemetry.
-- Files: `errors.jsonl`, `lessons.jsonl`, `injections.jsonl`, `trust.json`,
-  `model_accuracy.jsonl`.
+- Files: `errors.jsonl`, `lessons.jsonl`, `injections.jsonl`,
+  `counterfactuals.jsonl` (shadow mode), `trust.json`, `model_accuracy.jsonl`.
 - Sidecar files (auto-managed): `*.idx` (byte-offset index), `*.lock`
   (filelock), `vectors.npy` (embedding vectors), `vector_meta.json`
   (embedding metadata), `trust.json` (trust engine state).
@@ -300,12 +300,13 @@ prompts and reaches the model. So:
 - **Do not ingest lessons from untrusted sources without review.** Treat lesson
   capture like a code review, not like user input. A malicious lesson is a
   prompt-injection vector — and this is the real control, not the sanitizer.
-- **What the sanitizer does (and does not) do.** The lesson *pattern* passes
-  `sanitize_lesson_text`: it strips raw-JSON/code-fence *noise* and caps length
-  so log blobs don't pollute the prompt. It is a noise filter, **not** an
-  injection defense — it does not neutralize natural-language instructions, and
-  the *solution* text is stored as you author it (so it can hold real code).
-  Don't rely on it to make untrusted lessons safe.
+- **What the sanitizer does (and does not) do.** Both the lesson *pattern* and
+  *solution* pass `sanitize_lesson_text` at the injection boundary: it strips
+  raw-JSON/code-fence *noise* and control characters (ANSI/NUL) and caps length
+  so log blobs don't pollute the prompt, regardless of how the lesson was
+  written or where it came from. It is a noise filter, **not** an injection
+  defense — it does not neutralize natural-language instructions. Don't rely on
+  it to make untrusted lessons safe.
 - You control what becomes a lesson (`resolve(..., lesson=...)` /
   `add_lesson(...)`); nothing is auto-promoted from raw model output.
 

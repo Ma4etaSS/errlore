@@ -53,6 +53,10 @@ _JSON_LIKE_RE: re.Pattern[str] = re.compile(r"^\s*[\{\[]")
 # Collapse runs of whitespace into a single space.
 _COLLAPSE_WS_RE: re.Pattern[str] = re.compile(r"\s+")
 
+# Non-printable control characters (C0 minus \t\n\r, plus DEL). These survive
+# an \s-only collapse and can carry ANSI escape / NUL payloads into the prompt.
+_CONTROL_CHARS_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
 
 def _truncate_at_word(text: str, max_len: int) -> str:
     """Truncate *text* at a word boundary, appending ``...`` if needed.
@@ -92,6 +96,8 @@ def sanitize_lesson_text(text: str, *, max_len: int = 300) -> str | None:
     """
     # B8: strip BOM (UTF-8 byte-order mark) if present.
     text = text.lstrip("﻿")
+    # Drop non-printable control chars (ANSI escapes, NUL) before anything else.
+    text = _CONTROL_CHARS_RE.sub("", text)
     text = text.strip()
     if not text:
         return None

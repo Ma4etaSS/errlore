@@ -125,11 +125,7 @@ def check_consistency(
 
     extract = _final_line if mode == "final_line" else (lambda t: t.strip())
     keys = [extract(o) for o in outputs]
-
-    # Greedy clustering: an answer joins the first cluster whose representative
-    # it is equivalent to, else it opens a new one. Counts give agreement.
-    reps: list[str] = []
-    counts: list[int] = []
+    n = len(keys)
 
     def _equivalent(a: str, b: str) -> bool:
         if a == b:
@@ -138,22 +134,36 @@ def check_consistency(
             return _word_overlap(a, b) >= similarity
         return False
 
-    for key in keys:
-        for i, rep in enumerate(reps):
-            if _equivalent(key, rep):
-                counts[i] += 1
-                break
-        else:
-            reps.append(key)
-            counts.append(1)
+    # Union-find clustering: two answers share a cluster when they are
+    # pairwise equivalent, closed transitively. For the strict default
+    # (similarity == 1.0, exact equality) equivalence is already transitive,
+    # so this matches a plain set; for looser similarity it keeps `distinct`,
+    # `agreement`, and `stable` independent of input order.
+    parent = list(range(n))
 
-    top = max(range(len(reps)), key=lambda i: counts[i])
-    stable = len(reps) == 1
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _equivalent(keys[i], keys[j]):
+                parent[_find(i)] = _find(j)
+
+    clusters: dict[int, list[int]] = {}
+    for i in range(n):
+        clusters.setdefault(_find(i), []).append(i)
+
+    members = list(clusters.values())
+    largest = max(members, key=len)
+    stable = len(members) == 1
     return ConsistencyResult(
         stable=stable,
-        n_runs=len(outputs),
-        distinct=len(reps),
-        agreement=counts[top] / len(outputs),
-        majority=reps[top],
+        n_runs=n,
+        distinct=len(members),
+        agreement=len(largest) / n,
+        majority=keys[largest[0]],
         warning=None if stable else _UNSTABLE_WARNING,
     )

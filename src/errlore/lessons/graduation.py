@@ -211,9 +211,12 @@ def decide(
     """
     harm_break = max(0, harm_break)
     harm_keep = max(0, harm_keep)
-    if beta_sf(HARM_MAX, _ALPHA_H + harm_break, _BETA_H + harm_keep) > QUARANTINE_CONF:
+    # One survival-function evaluation drives both gates: Pr(p_h > HARM_MAX)
+    # for quarantine and its complement Pr(p_h <= HARM_MAX) for promote-safe.
+    harm_exceed = beta_sf(HARM_MAX, _ALPHA_H + harm_break, _BETA_H + harm_keep)
+    if harm_exceed > QUARANTINE_CONF:
         return "quarantine"
-    safe = harm_clear_probability(harm_break, harm_keep) > PROMOTE_SAFE_CONF
+    safe = (1.0 - harm_exceed) > PROMOTE_SAFE_CONF
     useful = fix_useful_probability(fix_yes, fix_no) > PROMOTE_USEFUL_CONF
     if safe and useful:
         return "promote"

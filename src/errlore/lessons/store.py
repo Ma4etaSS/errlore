@@ -596,11 +596,28 @@ class LessonStore:
     # ------------------------------------------------------------------
 
     def _read_errors(self) -> list[ErrorRecord]:
-        """Read all error records from disk."""
+        """Read all error records from disk, skipping malformed ones."""
         raw = self._writer.read_all(self._errors_path)
-        return [ErrorRecord.from_dict(r) for r in raw]
+        out: list[ErrorRecord] = []
+        for r in raw:
+            try:
+                out.append(ErrorRecord.from_dict(r))
+            except (ValueError, TypeError):
+                logger.warning("Skipping malformed error record: %.80s", str(r))
+        return out
 
     def _read_lessons(self) -> list[Lesson]:
-        """Read all lesson records from disk."""
+        """Read all lesson records from disk, skipping malformed ones.
+
+        A single record with a non-coercible field (e.g. a tampered
+        ``confidence`` or counter) must not crash every read path that depends
+        on lessons (inject_for, stats, lessons()).
+        """
         raw = self._writer.read_all(self._lessons_path)
-        return [Lesson.from_dict(r) for r in raw]
+        out: list[Lesson] = []
+        for r in raw:
+            try:
+                out.append(Lesson.from_dict(r))
+            except (ValueError, TypeError):
+                logger.warning("Skipping malformed lesson record: %.80s", str(r))
+        return out
