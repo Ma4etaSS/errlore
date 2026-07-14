@@ -364,6 +364,7 @@ class TestCounts:
             "errors_unresolved": 0,
             "lessons_total": 0,
             "lessons_applied": 0,
+            "lessons_quarantined": 0,
         }
 
     def test_mixed_state(self, store: LessonStore) -> None:

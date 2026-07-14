@@ -81,6 +81,13 @@ class Lesson:
     error_type: str = ""
     confidence: float = 0.8
     applied_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    # Shadow-mode counterfactual trial counts (see errlore.lessons.graduation).
+    harm_break: int = 0  # success-trials where injection broke a passing task
+    harm_keep: int = 0  # success-trials where injection kept the pass
+    fix_yes: int = 0  # failure-trials where injection fixed the failure
+    fix_no: int = 0  # failure-trials where injection did not fix it
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
     source_error_id: str = ""
@@ -97,6 +104,12 @@ class Lesson:
             "error_type": self.error_type,
             "confidence": self.confidence,
             "applied_count": self.applied_count,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
+            "harm_break": self.harm_break,
+            "harm_keep": self.harm_keep,
+            "fix_yes": self.fix_yes,
+            "fix_no": self.fix_no,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "source_error_id": self.source_error_id,
@@ -121,6 +134,12 @@ class Lesson:
             error_type=str(d.get("error_type", "")),
             confidence=float(d.get("confidence", 0.8)),
             applied_count=int(d.get("applied_count", 0)),
+            success_count=int(d.get("success_count", 0)),
+            failure_count=int(d.get("failure_count", 0)),
+            harm_break=int(d.get("harm_break", 0)),
+            harm_keep=int(d.get("harm_keep", 0)),
+            fix_yes=int(d.get("fix_yes", 0)),
+            fix_no=int(d.get("fix_no", 0)),
             created_at=str(d.get("created_at", _utc_now_iso())),
             updated_at=str(d.get("updated_at", _utc_now_iso())),
             source_error_id=str(d.get("source_error_id", "")),

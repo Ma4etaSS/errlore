@@ -23,6 +23,19 @@ Your agent keeps making the same mistakes. errlore fixes that:
   real outcomes to separate models; shipped, but not yet proven on production traffic.
 - **Closed loop** -- errlore tracks whether an injected lesson actually helped and
   reinforces or decays it automatically.
+- **Harm gate** -- injecting lessons also *breaks* some previously-passing tasks (we
+  measured 12–15%). errlore tracks each lesson's failures separately and withholds one
+  from injection once a Beta-Binomial bar says its harm rate is credibly too high — so a
+  bad lesson can't keep hurting you. A static conventions file can't do this.
+- **Warning tier** *(validator-less surfaces)* -- no oracle? Run the prompt twice and
+  pass both to `check_consistency`: disagreement flags "likely wrong" at ~86% precision.
+  Honestly one-sided — a *stable* result is explicitly **not** verification. Cheap
+  wrong-answer detector, never a correctness guarantee.
+- **Shadow mode** *(validator-equipped surfaces)* -- verify a lesson before it graduates.
+  A counterfactual run (never the user's output) re-tests baseline vs injected against
+  your validator; two Beta posteriors decide `promote` / `hold` / `quarantine`. Lessons
+  that clear the bar graduate into your prompt/docs with an evidence trail. See
+  [docs/SHADOW_MODE_SPEC.md](docs/SHADOW_MODE_SPEC.md).
 
 Embedded, file-based (JSONL), no server, no database, no API keys required.
 Works fully offline. Your data never leaves your machine.
@@ -247,6 +260,12 @@ you only need them for advanced use.
 | `report_outcome(inj, success)` | Close the loop: reinforce lessons, update trust.|
 | `add_lesson(pattern, solution)` | Add a lesson directly (sanitized).            |
 | `lessons(limit)`              | List all lessons (sorted by confidence).       |
+| `quarantined_lessons()`       | Lessons the harm gate withholds from injection.|
+| `check_consistency(outputs)`  | Warning tier: flag likely-wrong via re-run disagreement. |
+| `enqueue_counterfactual(inj, baseline)` | Shadow mode: queue a lesson's counterfactual trial. |
+| `report_counterfactual_outcome(cf_id, base_ok, inj_ok)` | Close a shadow trial; update graduation. |
+| `graduation_status(lesson_id)` | `promote` / `hold` / `quarantine` from shadow evidence. |
+| `graduated_lessons()`         | Lessons verified ready to bake into a permanent surface. |
 | `best_model(domain)`          | Model with the highest trust weight *(experimental)*. |
 | `model_penalty(model, task_type)` | Error-history penalty `[0, 1]`.            |
 | `pending_injections()`        | Injections not yet reported.                   |

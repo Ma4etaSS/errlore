@@ -10,15 +10,18 @@ try:
 except PackageNotFoundError:  # source tree without an install
     __version__ = "0.0.0.dev0"
 
+from errlore.consistency import ConsistencyResult, check_consistency
 from errlore.facade import AgentMemory, Injection
 from errlore.lessons.store import LessonStore
 from errlore.trust import FeedbackSignal, TrustEngine
 
 __all__ = [
     "AgentMemory",
+    "ConsistencyResult",
     "FeedbackSignal",
     "Injection",
     "LessonStore",
     "TrustEngine",
     "__version__",
+    "check_consistency",
 ]

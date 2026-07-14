@@ -24,6 +24,7 @@ from errlore.io import JSONLWriter
 from errlore.lessons.models import _short_id, _utc_now_iso
 from errlore.lessons.store import LessonStore
 from errlore.sanitize import sanitize_lesson_text
+from errlore.shadow import CounterfactualQueue
 from errlore.trust import FeedbackSignal, TrustEngine
 
 logger = logging.getLogger("errlore.facade")
@@ -86,6 +87,13 @@ class AgentMemory:
             Requires ``errlore[embeddings]`` extras (fastembed + numpy).
             When the extras are missing, falls back to word-overlap with
             a warning.
+        harm_gate: When True (default), lessons whose live failure history
+            clears the Beta-Binomial harm bar are withheld from injection
+            (see :mod:`errlore.lessons.graduation`).  This targets the
+            measured 12-15% interference from injecting lessons into tasks
+            they hurt.  A fresh or consistently-helpful lesson is never
+            gated, so good lessons are not starved.  Set False to restore
+            unconditional injection.
     """
 
     def __init__(
@@ -96,12 +104,14 @@ class AgentMemory:
         max_lessons: int = 3,
         decay_every: int = 50,
         embeddings: bool = False,
+        harm_gate: bool = True,
     ) -> None:
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._max_lessons = max_lessons
         self._decay_every = decay_every
         self._decay_counter = 0
+        self._harm_gate = harm_gate
 
         # Shared writer for injections.jsonl -- rotation disabled because
         # injections are addressed by handle_id and must remain visible.
@@ -111,6 +121,7 @@ class AgentMemory:
         # Subsystems.
         retriever = self._build_retriever(self._data_dir) if embeddings else None
         self._store = LessonStore(self._data_dir, retriever=retriever)
+        self._cf_queue = CounterfactualQueue(self._data_dir)
         self._tracker = ErrorTracker(self._data_dir)
         self._detector = PatternDetector()
         self._injector = WarningInjector(
@@ -253,6 +264,7 @@ class AgentMemory:
         *,
         task_type: str | None = None,
         domain: str | None = None,
+        mode: str = "live",
     ) -> Injection:
         """Build a context injection block for a new task.
 
@@ -269,6 +281,12 @@ class AgentMemory:
             model: Model name (used for known-issue lookup).
             task_type: Optional task category for narrower lesson search.
             domain: Trust domain (default ``"general"``).
+            mode: ``"live"`` (default) applies the harm gate -- quarantined
+                lessons are withheld.  ``"shadow"`` includes ALL candidate
+                lessons, quarantined ones too, so a counterfactual trial can
+                re-evaluate them off the user-facing path (the recovery route
+                for a suppressed lesson).  The returned block should be sent to
+                the model only in a shadow run, never the main request.
 
         Returns:
             :class:`Injection` with text block and handle for
@@ -283,11 +301,14 @@ class AgentMemory:
         effective_domain = domain or "general"
         effective_task_type = task_type or ""
 
-        # Search lessons.
+        # Search lessons.  Shadow trials evaluate every candidate (including
+        # quarantined ones); only the live path applies the harm gate.
+        exclude_quarantined = self._harm_gate and mode != "shadow"
         lessons = self._store.search_lessons(
             query=task,
             task_type=effective_task_type,
             limit=self._max_lessons,
+            exclude_quarantined=exclude_quarantined,
         )
         lesson_ids = [le.id for le in lessons]
 
@@ -453,6 +474,94 @@ class AgentMemory:
         return True
 
     # ------------------------------------------------------------------
+    # Shadow mode (counterfactual graduation)
+    # ------------------------------------------------------------------
+
+    def enqueue_counterfactual(
+        self,
+        inj: Injection,
+        baseline_prompt: str,
+    ) -> str:
+        """Queue a counterfactual trial for a shadow injection.
+
+        Pass the :class:`Injection` from ``inject_for(..., mode="shadow")`` and
+        the prompt you would have used WITHOUT it.  Your worker later re-runs
+        both against the model, scores each with the surface's deterministic
+        validator, and calls :meth:`report_counterfactual_outcome`.
+
+        Args:
+            inj: A shadow injection (its ``lesson_ids`` are the lessons under
+                test; its ``text`` is appended to *baseline_prompt* to form the
+                injected prompt).
+            baseline_prompt: The prompt without the lesson block.
+
+        Returns:
+            A ``cf_id`` for :meth:`report_counterfactual_outcome`.
+        """
+        injected_prompt = (
+            f"{baseline_prompt}\n{inj.text}" if inj.text else baseline_prompt
+        )
+        return self._cf_queue.enqueue(
+            lesson_ids=inj.lesson_ids,
+            model=inj.model,
+            baseline_prompt=baseline_prompt,
+            injected_prompt=injected_prompt,
+        )
+
+    def report_counterfactual_outcome(
+        self,
+        cf_id: str,
+        baseline_passed: bool,
+        injected_passed: bool,
+    ) -> bool:
+        """Close a counterfactual trial and update per-lesson graduation state.
+
+        Updates each lesson's shadow counters (see
+        :meth:`LessonStore.record_counterfactual`) so its graduation verdict can
+        move toward promote / hold / quarantine.
+
+        **Idempotent**: reporting the same ``cf_id`` twice returns ``False``.
+
+        Args:
+            cf_id: Handle from :meth:`enqueue_counterfactual`.
+            baseline_passed: Did the validator pass the baseline output?
+            injected_passed: Did the validator pass the injected output?
+
+        Returns:
+            ``True`` on first report, ``False`` on duplicate.
+
+        Raises:
+            KeyError: If *cf_id* was never queued.
+        """
+        lesson_ids = self._cf_queue.resolve(cf_id, baseline_passed, injected_passed)
+        if lesson_ids is None:
+            return False
+        for lid in lesson_ids:
+            self._store.record_counterfactual(lid, baseline_passed, injected_passed)
+        return True
+
+    def pending_counterfactuals(self) -> list[Any]:
+        """Return counterfactual trials queued but not yet reported."""
+        return self._cf_queue.pending()
+
+    def graduation_status(self, lesson_id: str) -> str | None:
+        """Graduation verdict for a lesson from its counterfactual evidence.
+
+        Returns ``"promote"``, ``"hold"``, ``"quarantine"``, or ``None`` if the
+        lesson is unknown (see :mod:`errlore.lessons.graduation`).
+        """
+        return self._store.graduation_status(lesson_id)
+
+    def graduated_lessons(self) -> list[Any]:
+        """Return lessons whose counterfactual evidence says ``promote``.
+
+        These have cleared the safety bar and shown at least one verified fix;
+        they are ready to graduate into a permanent surface (system prompt,
+        conventions doc, a PR) with their counts as the evidence trail.
+        """
+        return self._store.graduated_lessons()
+
+    # ------------------------------------------------------------------
     # Lesson convenience API
     # ------------------------------------------------------------------
 
@@ -506,6 +615,66 @@ class AgentMemory:
             return all_lessons[:limit]
         return all_lessons
 
+    def check_consistency(
+        self,
+        outputs: list[str],
+        *,
+        mode: str = "final_line",
+        similarity: float = 1.0,
+        model: str | None = None,
+        task_type: str = "",
+    ) -> Any:
+        """Flag likely-wrong output via re-run consistency (warning tier).
+
+        Thin wrapper over :func:`errlore.consistency.check_consistency` for
+        validator-less surfaces.  When *model* is given and the outputs are
+        unstable, the instability is also recorded via :meth:`log_error`, so a
+        recurring flaky surface becomes a tracked failure you can resolve into
+        a lesson.
+
+        See :mod:`errlore.consistency` for the honest one-sided operating
+        profile (86% precision, ~19% recall; a stable result is not
+        verification).
+
+        Args:
+            outputs: Two or more independent runs of the same prompt.
+            mode: ``"final_line"`` (default) or ``"full"``.
+            similarity: Equivalence threshold in ``(0, 1]`` (1.0 = strict).
+            model: If set, an unstable verdict is logged as an error for it.
+            task_type: Task category for the logged error.
+
+        Returns:
+            :class:`~errlore.consistency.ConsistencyResult`.
+        """
+        from errlore.consistency import check_consistency
+
+        result = check_consistency(outputs, mode=mode, similarity=similarity)
+        if model is not None and not result.stable:
+            self.log_error(
+                model,
+                task_type or "consistency",
+                error="unstable output across re-runs",
+                message=(
+                    f"consistency flag: {result.distinct} distinct answers in "
+                    f"{result.n_runs} runs (agreement {result.agreement:.2f})"
+                ),
+            )
+        return result
+
+    def quarantined_lessons(self) -> list[Any]:
+        """Return lessons the harm gate currently withholds from injection.
+
+        Empty when ``harm_gate=False`` semantics are desired at read time is
+        not implied -- this always reflects the harm-gate verdict on each
+        lesson's failure history, regardless of the constructor flag, so it
+        works as an audit view.
+
+        Returns:
+            List of :class:`~errlore.lessons.models.Lesson` objects that are
+            quarantined (see :mod:`errlore.lessons.graduation`).
+        """
+        return self._store.quarantined_lessons()
+
     # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
@@ -551,8 +720,9 @@ class AgentMemory:
         """Return aggregate statistics.
 
         Keys: ``errors_total``, ``errors_resolved``, ``errors_unresolved``,
-        ``lessons_total``, ``lessons_applied``, ``pending_injections``,
-        and (when trust is enabled) ``trust`` — a dict of model weights.
+        ``lessons_total``, ``lessons_applied``, ``lessons_quarantined``,
+        ``pending_injections``, and (when trust is enabled) ``trust`` — a
+        dict of model weights.
         """
         result: dict[str, Any] = {
             **self._store.counts(),

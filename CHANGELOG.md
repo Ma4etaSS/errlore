@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-14
+
+### Added
+- **Shadow mode: counterfactual graduation.** The full mechanism from
+  `docs/SHADOW_MODE_SPEC.md`. `inject_for(..., mode="shadow")` builds a lesson
+  block for a parallel run that never touches the user's output (and re-includes
+  quarantined lessons — the recovery route a suppressed lesson otherwise lacks).
+  `enqueue_counterfactual()` durably queues the (baseline, injected) pair;
+  your worker re-runs both, scores each with a deterministic validator, and
+  calls `report_counterfactual_outcome(cf_id, baseline_passed, injected_passed)`.
+  Two per-lesson Beta posteriors (harm + fix) drive a `graduation_status()` of
+  `promote` / `hold` / `quarantine` via the validated two-gate rule (strict on
+  harm, lenient on usefulness). `graduated_lessons()` surfaces lessons ready to
+  bake into a permanent surface with their evidence counts. Every spec anchor
+  (quarantine 5/20; promote after ~60 clean trials + 1 fix; fix/harm-clear
+  posteriors 0.387/0.736/0.910/0.961/0.993) is pinned by a unit test. errlore
+  never calls the model/validator — that stays the worker's job. Zero new deps.
+- **Warning tier: self-consistency as an honest wrong-answer signal.** New
+  `errlore.consistency` (`check_consistency` + `AgentMemory.check_consistency`):
+  on validator-less surfaces, feed 2+ independent runs of the same prompt and
+  errlore flags disagreement as "unstable — likely wrong" at ~86% precision
+  (`benchmarks/results/CONSISTENCY_SIGNAL_2026-07-11.md`). Deliberately
+  one-sided: a *stable* result is never presented as verification (61% residual
+  wrongness on our grid). `final_line`/`full` modes, optional `similarity`
+  loosening, and — when a model is named — an unstable verdict is logged as a
+  tracked error. errlore never calls the model (offline ethos: the caller
+  supplies outputs). Zero new dependencies.
+- **Harm gate: interference-guarded lesson injection.** Lessons now track
+  `success_count`/`failure_count` separately (the old single confidence scalar
+  erased this signal — a lesson that helped 3× and hurt 3× looked untouched).
+  A Beta-Binomial gate (`errlore.lessons.graduation`) withholds a lesson from
+  injection once its live failure history clears a 95% credible bar that its
+  harm rate exceeds 5% — calibrated to the numbers validated in
+  `docs/SHADOW_MODE_SPEC.md` (5 harms/20 trials → quarantine, 4/20 → hold).
+  This grounds the *harm* half of shadow mode in the live `report_outcome`
+  loop and targets the measured 12–15% interference
+  (`benchmarks/results/REPRODUCIBILITY_2026-07-11.md`). On by default
+  (`AgentMemory(..., harm_gate=True)`); a fresh or consistently-helpful lesson
+  is never gated, so good lessons are not starved. The gate is self-limiting
+  (caps damage at ~4–5 harmful injections, then freezes the lesson);
+  deliberate recovery/re-evaluation is deferred to shadow mode. New API:
+  `AgentMemory.quarantined_lessons()` and a `lessons_quarantined` key in
+  `stats()`. Zero new dependencies (regularized incomplete beta via a Lentz
+  continued fraction, stdlib only).
+
 ## [0.2.2] - 2026-07-11
 
 ### Fixed
