@@ -258,6 +258,7 @@ class LessonStore:
         task_type: str = "",
         error_type: str = "",
         limit: int = 10,
+        exclude_quarantined: bool = False,
     ) -> list[Lesson]:
         """Search lessons by structured filters and/or fuzzy text query.
 
@@ -271,6 +272,13 @@ class LessonStore:
         2. query: word overlap > 30%, fallback to substring match
         3. Results sorted by confidence descending
 
+        Args:
+            exclude_quarantined: When True, lessons whose live failure
+                history clears the harm-gate credible bar (see
+                :mod:`errlore.lessons.graduation`) are dropped before the
+                *limit* is applied, so a suppressed lesson never occupies a
+                slot a healthy one could fill.
+
         Returns:
             Up to *limit* lessons.
         """
@@ -279,13 +287,24 @@ class LessonStore:
 
         # -- Semantic path (retriever + query) ----------------------------
         if self._retriever is not None and query:
-            sem = self._semantic_search(query, task_type, error_type, limit)
+            sem = self._semantic_search(
+                query, task_type, error_type, limit, exclude_quarantined
+            )
             if sem:
                 return sem
             # Fall through to word-overlap below.
 
         # -- Word-overlap path (original logic) ---------------------------
-        return self._word_overlap_search(query, task_type, error_type, limit)
+        return self._word_overlap_search(
+            query, task_type, error_type, limit, exclude_quarantined
+        )
+
+    @staticmethod
+    def _is_quarantined(lesson: Lesson) -> bool:
+        """Whether *lesson* is harm-gated out of injection."""
+        from errlore.lessons.graduation import is_quarantined
+
+        return is_quarantined(lesson.success_count, lesson.failure_count)
 
     def _semantic_search(
         self,
@@ -293,6 +312,7 @@ class LessonStore:
         task_type: str,
         error_type: str,
         limit: int,
+        exclude_quarantined: bool = False,
     ) -> list[Lesson]:
         """Run semantic search via the configured retriever.
 
@@ -318,6 +338,8 @@ class LessonStore:
                 continue
             if error_type and lesson.error_type != error_type:
                 continue
+            if exclude_quarantined and self._is_quarantined(lesson):
+                continue
             matched.append(lesson)
 
         # Rank by semantic score (primary), confidence (secondary).
@@ -333,6 +355,7 @@ class LessonStore:
         task_type: str,
         error_type: str,
         limit: int,
+        exclude_quarantined: bool = False,
     ) -> list[Lesson]:
         """Original word-overlap search logic (preserved for fallback)."""
         all_lessons = self._read_lessons()
@@ -367,6 +390,9 @@ class LessonStore:
                     if query_lower in lesson.pattern.lower():
                         results.append(lesson)
 
+        if exclude_quarantined:
+            results = [le for le in results if not self._is_quarantined(le)]
+
         results.sort(key=lambda x: x.confidence, reverse=True)
         return results[:limit]
 
@@ -398,6 +424,13 @@ class LessonStore:
                         max(0.1, min(1.0, les.confidence + delta)), 2
                     )
                     les.applied_count += 1
+                    # Keep the raw success/failure signal separate from the
+                    # single confidence scalar -- the harm gate needs both
+                    # counts, which a net +/-0.1 confidence move would erase.
+                    if success:
+                        les.success_count += 1
+                    else:
+                        les.failure_count += 1
                     les.updated_at = _utc_now_iso()
                     target = les
                     entry.update(les.to_dict())
@@ -471,6 +504,7 @@ class LessonStore:
 
         resolved = sum(1 for e in errors if e.resolved)
         applied = sum(1 for le in lessons if le.applied_count > 0)
+        quarantined = sum(1 for le in lessons if self._is_quarantined(le))
 
         return {
             "errors_total": len(errors),
@@ -478,7 +512,12 @@ class LessonStore:
             "errors_unresolved": len(errors) - resolved,
             "lessons_total": len(lessons),
             "lessons_applied": applied,
+            "lessons_quarantined": quarantined,
         }
+
+    def quarantined_lessons(self) -> list[Lesson]:
+        """Return lessons currently withheld from injection by the harm gate."""
+        return [le for le in self._read_lessons() if self._is_quarantined(le)]
 
     # ------------------------------------------------------------------
     # Internal I/O

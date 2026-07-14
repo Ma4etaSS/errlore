@@ -81,6 +81,8 @@ class Lesson:
     error_type: str = ""
     confidence: float = 0.8
     applied_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
     created_at: str = field(default_factory=_utc_now_iso)
     updated_at: str = field(default_factory=_utc_now_iso)
     source_error_id: str = ""
@@ -97,6 +99,8 @@ class Lesson:
             "error_type": self.error_type,
             "confidence": self.confidence,
             "applied_count": self.applied_count,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "source_error_id": self.source_error_id,
@@ -121,6 +125,8 @@ class Lesson:
             error_type=str(d.get("error_type", "")),
             confidence=float(d.get("confidence", 0.8)),
             applied_count=int(d.get("applied_count", 0)),
+            success_count=int(d.get("success_count", 0)),
+            failure_count=int(d.get("failure_count", 0)),
             created_at=str(d.get("created_at", _utc_now_iso())),
             updated_at=str(d.get("updated_at", _utc_now_iso())),
             source_error_id=str(d.get("source_error_id", "")),

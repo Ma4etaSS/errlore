@@ -86,6 +86,13 @@ class AgentMemory:
             Requires ``errlore[embeddings]`` extras (fastembed + numpy).
             When the extras are missing, falls back to word-overlap with
             a warning.
+        harm_gate: When True (default), lessons whose live failure history
+            clears the Beta-Binomial harm bar are withheld from injection
+            (see :mod:`errlore.lessons.graduation`).  This targets the
+            measured 12-15% interference from injecting lessons into tasks
+            they hurt.  A fresh or consistently-helpful lesson is never
+            gated, so good lessons are not starved.  Set False to restore
+            unconditional injection.
     """
 
     def __init__(
@@ -96,12 +103,14 @@ class AgentMemory:
         max_lessons: int = 3,
         decay_every: int = 50,
         embeddings: bool = False,
+        harm_gate: bool = True,
     ) -> None:
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._max_lessons = max_lessons
         self._decay_every = decay_every
         self._decay_counter = 0
+        self._harm_gate = harm_gate
 
         # Shared writer for injections.jsonl -- rotation disabled because
         # injections are addressed by handle_id and must remain visible.
@@ -288,6 +297,7 @@ class AgentMemory:
             query=task,
             task_type=effective_task_type,
             limit=self._max_lessons,
+            exclude_quarantined=self._harm_gate,
         )
         lesson_ids = [le.id for le in lessons]
 
@@ -506,6 +516,20 @@ class AgentMemory:
             return all_lessons[:limit]
         return all_lessons
 
+    def quarantined_lessons(self) -> list[Any]:
+        """Return lessons the harm gate currently withholds from injection.
+
+        Empty when ``harm_gate=False`` semantics are desired at read time is
+        not implied -- this always reflects the harm-gate verdict on each
+        lesson's failure history, regardless of the constructor flag, so it
+        works as an audit view.
+
+        Returns:
+            List of :class:`~errlore.lessons.models.Lesson` objects that are
+            quarantined (see :mod:`errlore.lessons.graduation`).
+        """
+        return self._store.quarantined_lessons()
+
     # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
@@ -551,8 +575,9 @@ class AgentMemory:
         """Return aggregate statistics.
 
         Keys: ``errors_total``, ``errors_resolved``, ``errors_unresolved``,
-        ``lessons_total``, ``lessons_applied``, ``pending_injections``,
-        and (when trust is enabled) ``trust`` — a dict of model weights.
+        ``lessons_total``, ``lessons_applied``, ``lessons_quarantined``,
+        ``pending_injections``, and (when trust is enabled) ``trust`` — a
+        dict of model weights.
         """
         result: dict[str, Any] = {
             **self._store.counts(),

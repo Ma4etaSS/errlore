@@ -23,6 +23,10 @@ Your agent keeps making the same mistakes. errlore fixes that:
   real outcomes to separate models; shipped, but not yet proven on production traffic.
 - **Closed loop** -- errlore tracks whether an injected lesson actually helped and
   reinforces or decays it automatically.
+- **Harm gate** -- injecting lessons also *breaks* some previously-passing tasks (we
+  measured 12–15%). errlore tracks each lesson's failures separately and withholds one
+  from injection once a Beta-Binomial bar says its harm rate is credibly too high — so a
+  bad lesson can't keep hurting you. A static conventions file can't do this.
 
 Embedded, file-based (JSONL), no server, no database, no API keys required.
 Works fully offline. Your data never leaves your machine.
@@ -247,6 +251,7 @@ you only need them for advanced use.
 | `report_outcome(inj, success)` | Close the loop: reinforce lessons, update trust.|
 | `add_lesson(pattern, solution)` | Add a lesson directly (sanitized).            |
 | `lessons(limit)`              | List all lessons (sorted by confidence).       |
+| `quarantined_lessons()`       | Lessons the harm gate withholds from injection.|
 | `best_model(domain)`          | Model with the highest trust weight *(experimental)*. |
 | `model_penalty(model, task_type)` | Error-history penalty `[0, 1]`.            |
 | `pending_injections()`        | Injections not yet reported.                   |

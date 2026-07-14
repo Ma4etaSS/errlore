@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Harm gate: interference-guarded lesson injection.** Lessons now track
+  `success_count`/`failure_count` separately (the old single confidence scalar
+  erased this signal — a lesson that helped 3× and hurt 3× looked untouched).
+  A Beta-Binomial gate (`errlore.lessons.graduation`) withholds a lesson from
+  injection once its live failure history clears a 95% credible bar that its
+  harm rate exceeds 5% — calibrated to the numbers validated in
+  `docs/SHADOW_MODE_SPEC.md` (5 harms/20 trials → quarantine, 4/20 → hold).
+  This grounds the *harm* half of shadow mode in the live `report_outcome`
+  loop and targets the measured 12–15% interference
+  (`benchmarks/results/REPRODUCIBILITY_2026-07-11.md`). On by default
+  (`AgentMemory(..., harm_gate=True)`); a fresh or consistently-helpful lesson
+  is never gated, so good lessons are not starved. The gate is self-limiting
+  (caps damage at ~4–5 harmful injections, then freezes the lesson);
+  deliberate recovery/re-evaluation is deferred to shadow mode. New API:
+  `AgentMemory.quarantined_lessons()` and a `lessons_quarantined` key in
+  `stats()`. Zero new dependencies (regularized incomplete beta via a Lentz
+  continued fraction, stdlib only).
+
 ## [0.2.2] - 2026-07-11
 
 ### Fixed
