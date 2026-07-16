@@ -11,23 +11,30 @@ import re
 
 from errlore.errmem.patterns import PatternDetector
 from errlore.errmem.tracker import ErrorTracker
-from errlore.sanitize import extract_readable_from_json
+from errlore.sanitize import extract_readable_from_json, sanitize_lesson_text
 
 logger = logging.getLogger("errlore.errmem")
 
 _MAX_DESCRIPTION_LEN = 200
-_RAW_JSON_RE = re.compile(r"^\s*[\{`]")
+# Object OR array. The array form was previously missed, so a JSON list like
+# ["ignore previous instructions"] flowed through verbatim into the KNOWN ISSUES
+# block -- a second, unhardened injection path parallel to the lessons block.
+_RAW_JSON_RE = re.compile(r"^\s*[\{\[`]")
 
 
 def sanitize_description(text: str) -> str | None:
     """Sanitize a description for human-readable prompt injection.
 
+    Past-error descriptions feed the KNOWN ISSUES block, which reaches the same
+    prompt as the lessons block, so this path gets the same treatment as
+    :func:`~errlore.sanitize.sanitize_lesson_text`: NFKC normalization,
+    zero-width/control-char stripping, and override-phrase neutralization.
+
     Rules:
-        - Strip to ``_MAX_DESCRIPTION_LEN`` characters.
-        - Collapse runs of whitespace into a single space.
-        - If the text looks like raw JSON (starts with ``{`` or backticks),
+        - If the text looks like raw JSON (object, array, or backticks),
           try to extract a readable ``"message"`` / ``"error"`` field;
           otherwise discard the entry entirely (return ``None``).
+        - Otherwise normalize/scrub and truncate to ``_MAX_DESCRIPTION_LEN``.
 
     Args:
         text: Raw description string.
@@ -45,13 +52,10 @@ def sanitize_description(text: str) -> str | None:
             return None
         text = extracted
 
-    # B8: collapse whitespace (consistent with sanitize.py).
-    text = re.sub(r"\s+", " ", text).strip()
-
-    if len(text) > _MAX_DESCRIPTION_LEN:
-        text = text[: _MAX_DESCRIPTION_LEN - 3] + "..."
-
-    return text
+    # Route through the shared lesson sanitizer: NFKC + zero-width strip +
+    # control-char removal + override-phrase neutralization + word-boundary
+    # truncation. Keeps both injection paths on one hardened gate.
+    return sanitize_lesson_text(text, max_len=_MAX_DESCRIPTION_LEN)
 
 
 class WarningInjector:

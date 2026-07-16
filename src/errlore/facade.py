@@ -13,9 +13,11 @@ Injection handles are persisted to ``data_dir/injections.jsonl``
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -170,9 +172,23 @@ class AgentMemory:
             return 0
 
     def _write_decay_count(self, count: int) -> None:
-        tmp = self._decay_state_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps({"count": count}), encoding="utf-8")
-        os.replace(tmp, self._decay_state_path)
+        # Unique tmp per process + fsync before replace, so a crash cannot leave
+        # a torn/zero-length decay_state.json (which would silently reset the
+        # counter and stop decay from ever firing). Always called under the
+        # decay_state file lock, so the tmp/replace is race-free.
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(self._data_dir), suffix=".decay.tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"count": count}))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, self._decay_state_path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
 
     @staticmethod
     def _build_retriever(data_dir: Path) -> Any:

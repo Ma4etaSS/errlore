@@ -43,6 +43,28 @@ class TestCounterfactualQueue:
         q2 = CounterfactualQueue(data_dir)
         assert [c.cf_id for c in q2.pending()] == [cf_id]
 
+    def test_resolve_is_idempotent_across_separate_instances(
+        self, data_dir: Path
+    ) -> None:
+        """Two queues (≈two processes) resolving the same cf_id: only one wins.
+
+        Guards the fix where resolve() must read fresh under the lock -- a stale
+        per-instance cache could miss the other's 'resolved' marker and
+        double-resolve, corrupting the graduation posterior.
+        """
+        writer = CounterfactualQueue(data_dir)
+        cf_id = writer.enqueue(["l1"], "m", "b", "i")
+
+        q1 = CounterfactualQueue(data_dir)
+        q2 = CounterfactualQueue(data_dir)
+        # Warm each instance's read cache before either resolves.
+        assert q1.pending() and q2.pending()
+
+        r1 = q1.resolve(cf_id, True, True)
+        r2 = q2.resolve(cf_id, True, True)
+        assert {bool(r1), bool(r2)} == {True, False}
+        assert CounterfactualQueue(data_dir).pending() == []
+
 
 class TestCounterSemantics:
     def test_trial_types_map_to_right_counters(self, data_dir: Path) -> None:

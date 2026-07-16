@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-07-16
+
+Follow-up from a re-audit of the 0.3.2 hardening pass.
+
+### Fixed
+- **Injection scrub no longer mangles legitimate lessons.** The 0.3.2
+  override-phrase filter falsely redacted benign text such as
+  "the new instructions: field", "forget everything above the fold",
+  "you are now the owner", and "system prompt: template". The patterns now
+  require an explicit `<override-verb> … <previous/above> … <instruction-noun>`
+  structure, so those pass through untouched while real payloads are still cut.
+- **Unicode bypasses of the injection scrub are closed.** `sanitize_lesson_text`
+  now NFKC-normalizes and strips zero-width / bidi control characters before
+  matching, so full-width ("ｉｇｎｏｒｅ"), homoglyph, and zero-width-split
+  ("ig<ZWSP>nore") variants fold to ASCII and are redacted. Synonym verbs
+  ("pay no attention to", "stop following", "do not follow") and adjective/noun
+  gaps ("ignore the earlier system instructions") are now caught too.
+- **Known-issues descriptions get the same hardening as lessons.** The
+  `KNOWN ISSUES` block is assembled from past-error descriptions, a second path
+  into the same prompt. `sanitize_description` now routes through the shared
+  lesson sanitizer (NFKC, zero-width/control-char strip, override-phrase scrub)
+  and detects JSON **arrays** (previously only objects), closing an unhardened
+  injection path.
+- **`CounterfactualQueue.resolve` reads fresh under the lock.** Like
+  `report_outcome` in 0.3.2, it could miss another process's `resolved` marker
+  via a stale cross-process cache and double-resolve, corrupting the graduation
+  posterior. Now uses `use_cache=False`.
+- **Decay counter is written atomically.** `decay_state.json` is written via a
+  unique temp file with `fsync` before `os.replace`, so a crash cannot leave a
+  torn/zero-length file that silently resets the counter.
+
 ## [0.3.2] - 2026-07-16
 
 ### Security

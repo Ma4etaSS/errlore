@@ -132,7 +132,10 @@ class CounterfactualQueue:
             KeyError: If *cf_id* was never queued.
         """
         with self._lock, self._writer.lock(self._path):
-            events = self._writer.read_all(self._path)
+            # Read fresh under the lock -- a stale cross-process cache could miss
+            # another worker's "resolved" marker and double-resolve, corrupting
+            # the graduation posterior (same fix as AgentMemory.report_outcome).
+            events = self._writer.read_all(self._path, use_cache=False)
 
             queued: dict[str, object] | None = None
             for ev in events:

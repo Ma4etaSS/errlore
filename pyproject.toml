@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "errlore"
-version = "0.3.2"
+version = "0.3.3"
 description = "Memory for AI agents that learns from failures: lessons, known-issues injection, and per-model trust — embedded, file-based, no server."
 readme = "README.md"
 license = "MIT"
@@ -65,6 +65,9 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/errlore/errmem/patterns.py" = ["RUF001", "RUF003"]
+# Intentional homoglyph / full-width / zero-width payloads exercising the
+# prompt-injection sanitizer's Unicode-bypass defenses.
+"tests/test_hardening.py" = ["RUF001", "RUF003"]
 "benchmarks/*" = ["E501", "SIM115"]  # long authored lesson strings; long-lived log handle
 "site/*" = ["E501"]  # demo-script terminal strings read better unwrapped
 

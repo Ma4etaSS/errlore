@@ -8,6 +8,7 @@ the JSON-extraction helper from here).
 from __future__ import annotations
 
 import re
+import unicodedata
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -57,29 +58,37 @@ _COLLAPSE_WS_RE: re.Pattern[str] = re.compile(r"\s+")
 # an \s-only collapse and can carry ANSI escape / NUL payloads into the prompt.
 _CONTROL_CHARS_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
+# Zero-width and bidi-control characters. These are invisible, survive an
+# \s-only collapse, and let an attacker split a keyword ("ig<ZWSP>nore") to
+# slip past the override-phrase filter -- so they are removed outright.
+_ZERO_WIDTH_RE: re.Pattern[str] = re.compile(
+    "[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]"
+)
+
 # Prompt-injection override phrases. Lessons are auto-derived from tool output
 # (e.g. a failing command's stderr), so their text is only semi-trusted: an
 # attacker who can influence a captured failure could plant an instruction that
-# later lands in another session's context. These patterns match the high-signal
-# "override the instructions above" family and are replaced with ``[redacted]``.
-# They are deliberately narrow -- a normal lesson ("always validate input",
-# "demand ISO-8601") does not match -- so we neutralize the payload without
-# mangling legitimate advice. This is a defense-in-depth scrub, not a complete
-# semantic gate; injected memory is also framed as untrusted data at the
-# injection boundary (see AgentMemory.inject_for).
+# later lands in another session's context. This filter redacts the high-signal
+# "override the instructions above" family with ``[redacted]``.
+#
+# It is DEFENSE-IN-DEPTH, not a complete semantic gate: a determined attacker
+# can phrase an override the pattern does not list. The load-bearing control is
+# the "treat as data, not instructions" framing of the injected block (see
+# AgentMemory.inject_for). The patterns below are tuned to redact the obvious
+# payloads while NOT mangling legitimate lessons -- so they require an explicit
+# "<override-verb> ... <previous/above> ... <instruction-noun>" structure rather
+# than any single trigger word. Callers must NFKC-normalize and strip zero-width
+# chars first (sanitize_lesson_text does) so homoglyph/full-width/ZWSP variants
+# fold to ASCII before matching.
 _INJECTION_OVERRIDE_RE: re.Pattern[str] = re.compile(
     r"""
-    (?:ignore|disregard|forget|override)\s+
-        (?:all\s+|any\s+|the\s+)*
+    (?:ignore|disregard|override|forget
+        |pay\s+no\s+attention\s+to|stop\s+following|do\s+not\s+follow)\s+
+        (?:all\s+|any\s+|the\s+|your\s+)*
         (?:previous|prior|above|preceding|earlier|foregoing)\s+
-        (?:instructions?|context|prompts?|messages?|rules?)
-    | (?:ignore|disregard|forget)\s+
-        (?:everything|all)\s+
-        (?:above|before|previously)
-    | you\s+are\s+now\s+(?:a\b|an\b|the\b|no\s+longer)
-    | new\s+instructions?\s*:
-    | (?:system|developer)\s+prompt\s*:
-    | \bBEGIN\s+SYSTEM\b
+        (?:\w+\s+){0,2}?
+        (?:instructions?|context|prompts?|messages?|rules?|directives?
+            |guidance|guardrails?|commands?)
     | </?\s*(?:system|assistant|user|instructions?)\s*>
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -90,8 +99,11 @@ def neutralize_injection(text: str) -> str:
     """Redact prompt-injection override phrases from *text*.
 
     Replaces the high-signal "ignore previous instructions" family (and a few
-    role-delimiter spoofs) with ``[redacted]``. Narrow by design: legitimate
-    lessons pass through unchanged. See :data:`_INJECTION_OVERRIDE_RE`.
+    role-delimiter spoofs) with ``[redacted]``. Defense-in-depth, not a complete
+    gate -- see :data:`_INJECTION_OVERRIDE_RE`. For best coverage the caller
+    should NFKC-normalize and strip zero-width chars first (as
+    :func:`sanitize_lesson_text` does), so this is also safe to call on
+    already-normalized text.
     """
     return _INJECTION_OVERRIDE_RE.sub("[redacted]", text)
 
@@ -132,6 +144,13 @@ def sanitize_lesson_text(text: str, *, max_len: int = 300) -> str | None:
     Returns:
         Cleaned text, or ``None`` if the input is raw JSON or code-only.
     """
+    # Fold homoglyph / full-width / compatibility variants to ASCII so the
+    # override-phrase filter cannot be bypassed with lookalike characters
+    # (full-width Latin letters, a Cyrillic "i", etc.). NFKC is idempotent and
+    # leaves normal text untouched.
+    text = unicodedata.normalize("NFKC", text)
+    # Remove zero-width / bidi controls that could split a keyword invisibly.
+    text = _ZERO_WIDTH_RE.sub("", text)
     # B8: strip BOM (UTF-8 byte-order mark) if present.
     text = text.lstrip("﻿")
     # Drop non-printable control chars (ANSI escapes, NUL) before anything else.
