@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-16
+
+### Added
+- **Privacy mode: redact sensitive data before it reaches disk.** Error
+  descriptions come from tool output (stderr, command lines), which routinely
+  carries credentials, emails, and addresses. With
+  `AgentMemory(..., privacy_mode=True)` every text field is passed through the
+  new `errlore.redaction.Redactor` before persisting to
+  `errors.jsonl`/`lessons.jsonl`/`model_accuracy.jsonl` — so secrets never land
+  on disk and can never be re-injected into a later prompt. Default patterns
+  favor precision over recall: emails, IPv4 addresses, `Bearer` tokens,
+  `password=…`/`api_key: …` pairs, and well-known key prefixes (`sk-…`,
+  `ghp_…`, `github_pat_…`, `AKIA…`, `xox…`). Custom regexes via
+  `redact_patterns=[...]` (replaced with `[REDACTED]`); invalid patterns fail
+  at construction, not silently at write time. The Claude Code hooks honor
+  `ERRLORE_PRIVACY_MODE=1`. Off by default.
+
+### Changed
+- README: the Security section now documents the 0.3.3 override-phrase scrub
+  and untrusted-data framing; the Scale section reflects injections
+  self-compaction (0.3.2) and the cross-process test suite (0.3.3) instead of
+  the pre-0.3.2 "grows unbounded" claim.
+
 ## [0.3.3] - 2026-07-16
 
 Follow-up from a re-audit of the 0.3.2 hardening pass.

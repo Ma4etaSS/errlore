@@ -35,6 +35,26 @@ def data_dir() -> str:
     return os.environ.get("ERRLORE_DATA", os.path.expanduser("~/.errlore/claude-code"))
 
 
+def privacy_mode() -> bool:
+    """Whether ``ERRLORE_PRIVACY_MODE`` requests redaction of stored text.
+
+    Hook payloads carry raw command lines and stderr, which can contain
+    credentials; set ``ERRLORE_PRIVACY_MODE=1`` to scrub them before they
+    are persisted (see :mod:`errlore.redaction`).
+    """
+    return os.environ.get("ERRLORE_PRIVACY_MODE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _memory() -> AgentMemory:
+    """Construct the hook's AgentMemory honoring the env configuration."""
+    return AgentMemory(data_dir(), privacy_mode=privacy_mode())
+
+
 def post_tool_use(event_json: str | None = None) -> int:
     """Log a failed Bash command as an errlore error.
 
@@ -71,7 +91,7 @@ def post_tool_use(event_json: str | None = None) -> int:
     command = str(tool_input.get("command", "") if isinstance(tool_input, dict) else "")[:160]
     output = str(resp.get("output") or resp.get("stderr") or "")[:200]
     try:
-        AgentMemory(data_dir()).log_error(
+        _memory().log_error(
             "claude-code", "bash", f"CommandFailed: {command} :: {output}",
         )
     except Exception:  # never break the agent loop
@@ -114,7 +134,7 @@ def post_tool_use_failure(event_json: str | None = None) -> int:
     if not command and not error:
         return 0
     try:
-        AgentMemory(data_dir()).log_error(
+        _memory().log_error(
             "claude-code", "bash", f"CommandFailed: {command} :: {error}",
         )
     except Exception:  # never break the agent loop
@@ -128,7 +148,7 @@ def session_start() -> int:
     Empty memory prints nothing. Returns ``0`` always.
     """
     try:
-        mem = AgentMemory(data_dir())
+        mem = _memory()
         inj = mem.inject_for(
             "starting a coding session in this workspace",
             model="claude-code",

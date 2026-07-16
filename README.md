@@ -302,13 +302,39 @@ prompts and reaches the model. So:
   prompt-injection vector — and this is the real control, not the sanitizer.
 - **What the sanitizer does (and does not) do.** Both the lesson *pattern* and
   *solution* pass `sanitize_lesson_text` at the injection boundary: it strips
-  raw-JSON/code-fence *noise* and control characters (ANSI/NUL) and caps length
-  so log blobs don't pollute the prompt, regardless of how the lesson was
-  written or where it came from. It is a noise filter, **not** an injection
-  defense — it does not neutralize natural-language instructions. Don't rely on
-  it to make untrusted lessons safe.
+  raw-JSON/code-fence *noise* and control characters (ANSI/NUL), caps length,
+  NFKC-normalizes (homoglyph/full-width/zero-width tricks fold to ASCII), and
+  **redacts the "ignore all previous instructions" override family** — tuned to
+  catch the obvious payloads without touching legitimate lessons that merely
+  mention instructions or prompts. The injected block is also explicitly framed
+  as reference data, not instructions. All of that is defense-in-depth, **not**
+  a complete injection defense — a determined author can phrase an override no
+  pattern list catches. Don't rely on it to make untrusted lessons safe; review
+  is the real control.
 - You control what becomes a lesson (`resolve(..., lesson=...)` /
   `add_lesson(...)`); nothing is auto-promoted from raw model output.
+
+### Privacy mode
+
+Error descriptions come from tool output (stderr, command lines), which can
+carry credentials, emails, and addresses. With privacy mode on, every text
+field is scrubbed **before it reaches disk** — so secrets never land in
+`errors.jsonl`/`lessons.jsonl`, and therefore can never be re-injected into a
+later prompt:
+
+```python
+mem = AgentMemory(
+    "./data",
+    privacy_mode=True,
+    redact_patterns=[r"CUST-\d{6}"],   # optional extra regexes -> [REDACTED]
+)
+```
+
+Defaults redact emails, IPv4 addresses, `Bearer` tokens, `password=...` /
+`api_key: ...` pairs, and well-known key prefixes (`sk-…`, `ghp_…`,
+`github_pat_…`, `AKIA…`, `xox…`) — precision over recall, so hashes and IDs a
+lesson needs stay readable. For the Claude Code hooks, set
+`ERRLORE_PRIVACY_MODE=1` in the environment.
 
 Report security issues to the address in [SECURITY.md](SECURITY.md).
 
@@ -317,11 +343,11 @@ Report security issues to the address in [SECURITY.md](SECURITY.md).
 errlore is built for **one process, thousands of lessons** — a single agent or
 a coding-agent session, not a high-throughput fleet. Know the edges:
 
-- **`injections.jsonl` grows unbounded.** `report_outcome` scans the whole
-  ledger each call, so at very high injection volumes it slows down (roughly
-  linear in total injections). Fine for interactive/agent use; log compaction
-  is the next roadmap item. If you don't need the reinforcement loop, you can
-  ignore `report_outcome` and the file stays small.
+- **`injections.jsonl` self-compacts** (since 0.3.2): once the ledger passes a
+  size threshold, the heavy `issued` record of every closed handle is dropped,
+  keeping only its tiny `reported` marker and any pending injections — so
+  `report_outcome`'s full scan stays bounded. If you don't need the
+  reinforcement loop, you can ignore `report_outcome` and the file stays small.
 - **Single-process by default.** The lesson/error stores use cross-process file
   locks and are safe to share, but the **trust engine and the optional vector
   index are not cross-process safe** — two processes writing `trust.json` /
@@ -330,8 +356,9 @@ a coding-agent session, not a high-throughput fleet. Know the edges:
   on the roadmap.
 - **Embeddings index rebuild is O(n²) over many adds** — building a fresh index
   over a large existing lesson store is slow the first time (then incremental).
-- Concurrency is tested across threads; **multi-process** stress is not yet in
-  the suite.
+- Concurrency is tested across threads **and across real OS processes**
+  (lost-update and at-most-once-report suites) for the lesson/error/injection
+  stores; the trust engine and vector index remain single-writer as above.
 
 None of these bite at the scale errlore targets today; they're stated so you
 can decide, not discover.

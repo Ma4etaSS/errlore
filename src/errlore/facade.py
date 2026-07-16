@@ -27,6 +27,7 @@ from errlore.errmem import ErrorTracker, PatternDetector, WarningInjector, class
 from errlore.io import JSONLWriter
 from errlore.lessons.models import _short_id, _utc_now_iso
 from errlore.lessons.store import LessonStore
+from errlore.redaction import Redactor
 from errlore.sanitize import sanitize_lesson_text
 from errlore.shadow import CounterfactualQueue
 from errlore.trust import FeedbackSignal, TrustEngine
@@ -98,6 +99,13 @@ class AgentMemory:
             they hurt.  A fresh or consistently-helpful lesson is never
             gated, so good lessons are not starved.  Set False to restore
             unconditional injection.
+        privacy_mode: When True, every text field is passed through
+            :class:`~errlore.redaction.Redactor` before persisting, so
+            credentials/emails/IPs from tool output never reach disk (and
+            therefore never reach a prompt).  Default False.
+        redact_patterns: Optional extra regexes for privacy mode; each match
+            is replaced with ``[REDACTED]``.  Implies nothing when
+            *privacy_mode* is False.
     """
 
     def __init__(
@@ -109,12 +117,17 @@ class AgentMemory:
         decay_every: int = 50,
         embeddings: bool = False,
         harm_gate: bool = True,
+        privacy_mode: bool = False,
+        redact_patterns: list[str] | None = None,
     ) -> None:
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._max_lessons = max_lessons
         self._decay_every = decay_every
         self._harm_gate = harm_gate
+        self._redactor: Redactor | None = (
+            Redactor(redact_patterns) if privacy_mode else None
+        )
 
         # Shared writer for injections.jsonl -- rotation disabled because
         # injections are addressed by handle_id and must remain visible.
@@ -147,6 +160,12 @@ class AgentMemory:
 
         # Lock for report_outcome idempotency (within one process).
         self._report_lock = threading.Lock()
+
+    def _redact(self, text: str) -> str:
+        """Apply privacy-mode redaction; identity when privacy_mode is off."""
+        if self._redactor is None:
+            return text
+        return self._redactor.redact(text)
 
     def _tick_decay(self) -> bool:
         """Advance the persisted decay counter; return True when it fires.
@@ -251,6 +270,11 @@ class AgentMemory:
             error_type = classify_error(message=error)
             error_message = message or error
 
+        # Privacy mode: scrub credentials/emails/IPs from tool output BEFORE
+        # anything reaches disk (classification above is unaffected -- error
+        # types are bare identifiers the redactor never matches).
+        error_message = self._redact(error_message)
+
         # LessonStore: full error record.
         err_id = self._store.log_error(
             model=model,
@@ -291,7 +315,7 @@ class AgentMemory:
             True if the error was found (and resolved), False if unknown ID.
         """
         if lesson is not None:
-            sanitized = sanitize_lesson_text(lesson)
+            sanitized = sanitize_lesson_text(self._redact(lesson))
             if sanitized is None:
                 logger.warning(
                     "Lesson text rejected by sanitizer for error %s", err_id,
@@ -300,7 +324,7 @@ class AgentMemory:
             else:
                 lesson = sanitized
 
-        return self._store.resolve_error(err_id, resolution, lesson)
+        return self._store.resolve_error(err_id, self._redact(resolution), lesson)
 
     # ------------------------------------------------------------------
     # Injection
@@ -723,13 +747,13 @@ class AgentMemory:
         Returns:
             Lesson ID, or ``None`` if the pattern was rejected by the sanitizer.
         """
-        sanitized = sanitize_lesson_text(pattern)
+        sanitized = sanitize_lesson_text(self._redact(pattern))
         if sanitized is None:
             logger.warning("add_lesson: pattern rejected by sanitizer")
             return None
         return self._store.log_lesson(
             pattern=sanitized,
-            solution=solution,
+            solution=self._redact(solution),
             task_type=task_type,
             confidence=confidence,
         )
