@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "errlore"
-version = "0.3.1"
+version = "0.3.2"
 description = "Memory for AI agents that learns from failures: lessons, known-issues injection, and per-model trust — embedded, file-based, no server."
 readme = "README.md"
 license = "MIT"
