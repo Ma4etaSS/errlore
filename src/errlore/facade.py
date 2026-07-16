@@ -349,7 +349,8 @@ class AgentMemory:
 
         **Lazy decay**: every *decay_every* calls, runs
         :meth:`LessonStore.decay_unused` to lower confidence of
-        never-applied lessons.  Counter is in-process only.
+        never-applied lessons.  The counter is persisted to
+        ``decay_state.json``, so it accumulates across processes.
 
         Args:
             task: Task description (used as search query for lessons).

@@ -18,6 +18,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e .[dev]
+      - name: Version drift gate (pyproject vs site JSON-LD)
+        run: |
+          python - <<'PY'
+          import pathlib, re, tomllib
+          pkg = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          html = pathlib.Path("site/index.html").read_text(encoding="utf-8")
+          m = re.search(r'"softwareVersion":\s*"([^"]+)"', html)
+          assert m, "softwareVersion not found in site/index.html"
+          assert m.group(1) == pkg, f"version drift: pyproject={pkg} site={m.group(1)}"
+          print(f"version OK: {pkg}")
+          PY
       - name: Ruff
         run: ruff check .
       - name: Mypy
