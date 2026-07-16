@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-16
+
+Supply-chain / release-process hardening pass (external audit follow-up).
+
+### Security
+- **`filelock` floor raised to `>=3.20.3`.** The old `>=3.13` floor admitted
+  versions vulnerable to the TOCTOU/symlink advisories GHSA-qmgc-5h2g-mvrw
+  (fixed 3.20.3) and GHSA-w853-jp5j-5j7f (fixed 3.20.1). errlore's durability
+  model rests on these locks, so vulnerable floors matter.
+- **Generated hook scripts are executable by owner only.** `errlore init
+  claude-code` previously set the execute bit for group/other too.
+- **CI gains a `pip-audit` SCA job** (hard gate on known-vulnerable
+  dependencies, complementing Dependabot) and the release build now runs
+  `twine check --strict` before anything is uploaded.
+- **GitHub release now requires a successful PyPI publish** — a release can no
+  longer exist for a version that failed to reach the registry.
+
+### Changed
+- **`counterfactuals.jsonl` self-compacts** (mirrors the injections ledger):
+  past a size threshold, the `queued` record of every resolved trial — which
+  carries two full prompts — is dropped, keeping its small `resolved` marker
+  and all pending trials. Duplicate `resolve` on a compacted trial still
+  returns `None` (the duplicate check now precedes the queued lookup).
+
+### Fixed
+- `AgentMemory` docstring for `decay_every` still claimed the counter was
+  "in-process only"; it has been persisted to `decay_state.json` since 0.3.2.
+
 ## [0.4.0] - 2026-07-16
 
 ### Added

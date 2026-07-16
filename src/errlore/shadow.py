@@ -137,6 +137,14 @@ class CounterfactualQueue:
             # the graduation posterior (same fix as AgentMemory.report_outcome).
             events = self._writer.read_all(self._path, use_cache=False)
 
+            # Duplicate check FIRST: after compaction the (redundant) queued
+            # record of a closed trial is gone, and a re-resolve must still
+            # return None rather than raise KeyError.
+            for ev in events:
+                if ev.get("event") == "resolved" and ev.get("cf_id") == cf_id:
+                    logger.warning("Duplicate resolve for counterfactual %s", cf_id)
+                    return None
+
             queued: dict[str, object] | None = None
             for ev in events:
                 if ev.get("event") == "queued" and ev.get("cf_id") == cf_id:
@@ -144,11 +152,6 @@ class CounterfactualQueue:
                     break
             if queued is None:
                 raise KeyError(f"Unknown counterfactual: {cf_id}")
-
-            for ev in events:
-                if ev.get("event") == "resolved" and ev.get("cf_id") == cf_id:
-                    logger.warning("Duplicate resolve for counterfactual %s", cf_id)
-                    return None
 
             self._writer.append(
                 self._path,
@@ -161,5 +164,46 @@ class CounterfactualQueue:
                 },
             )
 
+            # Bound growth: queued records carry two full prompts each, so a
+            # long-lived queue is dominated by closed trials' dead weight.
+            # Still holding the file lock here.
+            if len(events) + 1 >= self._COMPACT_THRESHOLD:
+                self._compact()
+
             raw_ids = queued.get("lesson_ids", [])
             return [str(x) for x in raw_ids] if isinstance(raw_ids, list) else []
+
+    # Compact once the log exceeds this many records (mirrors AgentMemory's
+    # injections compaction).
+    _COMPACT_THRESHOLD: int = 1000
+
+    def _compact(self) -> None:
+        """Drop the queued record of every resolved trial (keep its marker).
+
+        A closed trial only needs its small ``resolved`` marker for the
+        duplicate-resolve check; the ``queued`` record -- which carries both
+        full prompts -- is dead weight. Pending trials are kept in full.
+        Must be called while holding the counterfactuals file lock.
+        """
+        def transform(
+            events: list[dict[str, object]],
+        ) -> list[dict[str, object]] | None:
+            resolved: set[str] = {
+                str(ev.get("cf_id", ""))
+                for ev in events
+                if ev.get("event") == "resolved"
+            }
+            kept = [
+                ev
+                for ev in events
+                if not (
+                    ev.get("event") == "queued"
+                    and str(ev.get("cf_id", "")) in resolved
+                )
+            ]
+            return kept if len(kept) != len(events) else None
+
+        try:
+            self._writer.atomic_update(self._path, transform)
+        except Exception:  # pragma: no cover - compaction must never break loop
+            logger.warning("counterfactuals compaction failed; continuing", exc_info=True)

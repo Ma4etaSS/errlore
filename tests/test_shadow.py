@@ -43,6 +43,39 @@ class TestCounterfactualQueue:
         q2 = CounterfactualQueue(data_dir)
         assert [c.cf_id for c in q2.pending()] == [cf_id]
 
+    def test_compaction_drops_closed_queued_keeps_pending(
+        self, data_dir: Path
+    ) -> None:
+        """Past the threshold, resolved trials lose their heavy queued record
+        (prompts), pending trials survive intact, and a duplicate resolve on a
+        compacted trial still returns None (not KeyError)."""
+        q = CounterfactualQueue(data_dir)
+        q._COMPACT_THRESHOLD = 4  # force compaction quickly
+
+        closed = [q.enqueue(["l1"], "m", f"base{i}", f"inj{i}") for i in range(2)]
+        pending_id = q.enqueue(["l2"], "m", "base-pending", "inj-pending")
+        for cf in closed:
+            assert q.resolve(cf, True, True) == ["l1"]
+
+        import json
+
+        rows = [
+            json.loads(line)
+            for line in (data_dir / "counterfactuals.jsonl").read_text().splitlines()
+        ]
+        queued_ids = {r["cf_id"] for r in rows if r["event"] == "queued"}
+        resolved_ids = {r["cf_id"] for r in rows if r["event"] == "resolved"}
+        for cf in closed:
+            assert cf not in queued_ids  # heavy record dropped
+            assert cf in resolved_ids  # marker kept
+        assert pending_id in queued_ids
+
+        # Idempotency survives compaction.
+        assert q.resolve(closed[0], True, True) is None
+        # Pending trial is still discoverable and resolvable.
+        assert [c.cf_id for c in q.pending()] == [pending_id]
+        assert q.resolve(pending_id, True, False) == ["l2"]
+
     def test_resolve_is_idempotent_across_separate_instances(
         self, data_dir: Path
     ) -> None:

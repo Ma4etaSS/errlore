@@ -35,7 +35,9 @@ sys.exit({func}())
 
 def _write_hook(path: Path, func: str, data_dir: str) -> None:
     path.write_text(_HOOK_TEMPLATE.format(func=func, data_dir=data_dir), encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Owner-only execute: the hook runs as the invoking user; group/other
+    # execute bits would just widen the attack surface of a generated script.
+    path.chmod((path.stat().st_mode | stat.S_IXUSR) & ~(stat.S_IXGRP | stat.S_IXOTH))
 
 
 def _ensure_hook(

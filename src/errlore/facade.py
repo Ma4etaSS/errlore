@@ -86,8 +86,10 @@ class AgentMemory:
             :meth:`stats` omits the ``trust`` key.
         max_lessons: Maximum lessons to include in injection text.
         decay_every: Run :meth:`LessonStore.decay_unused` every N
-            :meth:`inject_for` calls.  Counter is in-process only --
-            no cross-restart persistence needed.
+            :meth:`inject_for` calls.  The counter is persisted to
+            ``decay_state.json`` (under the data dir), so decay fires even
+            when every call runs in a fresh short-lived process (e.g. the
+            Claude Code hooks).
         embeddings: Enable semantic retrieval via embeddings (default False).
             Requires ``errlore[embeddings]`` extras (fastembed + numpy).
             When the extras are missing, falls back to word-overlap with
