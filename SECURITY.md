@@ -11,5 +11,18 @@ injected into prompts verbatim after sanitization; treat lessons from
 untrusted sources as untrusted prompt content.
 
 ## Reporting
-Email postoluk.m2@gmail.com. No bounty program; fixes are prioritized and
-credited in the changelog.
+Email postoluk.m2@gmail.com with a description, affected version, and (if
+possible) a minimal reproduction. Please use coordinated disclosure: report
+privately first and allow a fix to ship before publishing details.
+
+What to expect (solo-maintainer project, targets not guarantees):
+- **Acknowledgment within 72 hours.**
+- **Initial assessment within 7 days** — severity triage and whether a fix
+  is warranted.
+- **Fix for confirmed vulnerabilities within 30 days**, released as a patch
+  version with the advisory credited in the changelog (unless you prefer
+  anonymity).
+
+No bounty program. If you receive no reply within 7 days, open a GitHub
+issue saying you sent a security report (without details) so it can't get
+lost in spam.
