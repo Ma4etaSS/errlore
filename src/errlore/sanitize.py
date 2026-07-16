@@ -57,6 +57,44 @@ _COLLAPSE_WS_RE: re.Pattern[str] = re.compile(r"\s+")
 # an \s-only collapse and can carry ANSI escape / NUL payloads into the prompt.
 _CONTROL_CHARS_RE: re.Pattern[str] = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
+# Prompt-injection override phrases. Lessons are auto-derived from tool output
+# (e.g. a failing command's stderr), so their text is only semi-trusted: an
+# attacker who can influence a captured failure could plant an instruction that
+# later lands in another session's context. These patterns match the high-signal
+# "override the instructions above" family and are replaced with ``[redacted]``.
+# They are deliberately narrow -- a normal lesson ("always validate input",
+# "demand ISO-8601") does not match -- so we neutralize the payload without
+# mangling legitimate advice. This is a defense-in-depth scrub, not a complete
+# semantic gate; injected memory is also framed as untrusted data at the
+# injection boundary (see AgentMemory.inject_for).
+_INJECTION_OVERRIDE_RE: re.Pattern[str] = re.compile(
+    r"""
+    (?:ignore|disregard|forget|override)\s+
+        (?:all\s+|any\s+|the\s+)*
+        (?:previous|prior|above|preceding|earlier|foregoing)\s+
+        (?:instructions?|context|prompts?|messages?|rules?)
+    | (?:ignore|disregard|forget)\s+
+        (?:everything|all)\s+
+        (?:above|before|previously)
+    | you\s+are\s+now\s+(?:a\b|an\b|the\b|no\s+longer)
+    | new\s+instructions?\s*:
+    | (?:system|developer)\s+prompt\s*:
+    | \bBEGIN\s+SYSTEM\b
+    | </?\s*(?:system|assistant|user|instructions?)\s*>
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def neutralize_injection(text: str) -> str:
+    """Redact prompt-injection override phrases from *text*.
+
+    Replaces the high-signal "ignore previous instructions" family (and a few
+    role-delimiter spoofs) with ``[redacted]``. Narrow by design: legitimate
+    lessons pass through unchanged. See :data:`_INJECTION_OVERRIDE_RE`.
+    """
+    return _INJECTION_OVERRIDE_RE.sub("[redacted]", text)
+
 
 def _truncate_at_word(text: str, max_len: int) -> str:
     """Truncate *text* at a word boundary, appending ``...`` if needed.
@@ -117,6 +155,13 @@ def sanitize_lesson_text(text: str, *, max_len: int = 300) -> str | None:
 
     # Collapse whitespace.
     stripped = _COLLAPSE_WS_RE.sub(" ", stripped).strip()
+    if not stripped:
+        return None
+
+    # Neutralize prompt-injection override phrases before the text can reach a
+    # prompt. Applied after collapse so payloads split by odd whitespace
+    # ("ignore   previous  instructions") are still caught.
+    stripped = neutralize_injection(stripped).strip()
     if not stripped:
         return None
 

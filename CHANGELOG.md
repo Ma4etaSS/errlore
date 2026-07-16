@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Prompt-injection override phrases in lessons are now neutralized.** Lessons
+  are auto-derived from tool output (a failing command's stderr), so their text
+  is only semi-trusted. `sanitize_lesson_text` now redacts the high-signal
+  "ignore all previous instructions" / role-delimiter-spoof family via
+  `neutralize_injection`, and the injected `[LESSONS FROM PAST FAILURES]` block
+  is explicitly framed as untrusted reference data, not instructions. The scrub
+  is narrow: legitimate lessons ("always validate input", "ignore case when
+  comparing headers") pass through unchanged.
+
+### Fixed
+- **No lost updates across processes.** `atomic_update` now reads fresh from
+  disk under the file lock instead of via the mtime/size read cache, whose key
+  can collide across processes (coarse-mtime filesystems, equal-size writes) and
+  silently drop a concurrently-appended record. `read_all` gained a
+  `use_cache=False` option for lock-holding read-modify-write callers.
+- **`report_outcome` is now at-most-once even across a crash.** The `reported`
+  idempotency marker is written before reinforcement/trust updates (and the
+  idempotency check precedes the issued-event lookup), so a crash mid-call may
+  lose one signal but can never double-count — previously a crash between
+  reinforce and marker would double-reinforce on re-report.
+- **Lesson decay now fires in short-lived processes.** The `decay_every` counter
+  is persisted to `decay_state.json` instead of living in-process, so the
+  flagship one-process-per-hook Claude Code integration actually reaches the
+  decay threshold (it never did before).
+
+### Changed
+- **`injections.jsonl` self-compacts.** Once the log passes a size threshold,
+  the heavy `issued` record (carrying the prompt `text` blob) of every closed
+  handle is dropped, keeping only its tiny `reported` marker and any pending
+  injections — bounding the full-scan cost of `report_outcome` /
+  `pending_injections`.
+- Added a real cross-**process** concurrency test suite (`test_multiprocess.py`)
+  covering lost-update and at-most-once-report guarantees the prior thread-only
+  tests could not exercise.
+
 ## [0.3.1] - 2026-07-14
 
 ### Security

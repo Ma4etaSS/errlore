@@ -278,14 +278,22 @@ class JSONLWriter:
         """
         lock = self._get_lock(path)
         with lock:  # FileLock is re-entrant within the same thread
-            entries = self.read_all(path)
+            # Read fresh from disk, bypassing the mtime/size cache. Across
+            # processes the cache key (mtime_ns, size) can collide (coarse-mtime
+            # filesystems, same-size writes), so a cached read taken before this
+            # process acquired the lock could be stale -- transforming stale
+            # records and rewriting would silently drop another process's
+            # appended record. Reading under the lock, from disk, closes that.
+            entries = self.read_all(path, use_cache=False)
             new_entries = transform(entries)
             if new_entries is None:
                 return None
             self.atomic_rewrite(path, new_entries)
             return new_entries
 
-    def read_all(self, path: Path) -> list[dict[str, object]]:
+    def read_all(
+        self, path: Path, *, use_cache: bool = True
+    ) -> list[dict[str, object]]:
         """Read all valid records from a JSONL file.
 
         Results are cached by (mtime_ns, size).  Subsequent calls that hit the
@@ -294,6 +302,10 @@ class JSONLWriter:
 
         Args:
             path: Path to the JSONL file.
+            use_cache: When False, always parse from disk and skip the cache
+                lookup (the parsed result is still stored for later readers).
+                Read-modify-write callers holding the file lock use this to
+                avoid a cross-process stale-cache lost update.
 
         Returns:
             List of parsed dict records.
@@ -304,12 +316,13 @@ class JSONLWriter:
         st = path.stat()
         key = str(path)
 
-        with self._cache_lock:
-            cached = self._read_cache.get(key)
-            if cached is not None:
-                c_mtime, c_size, c_records = cached
-                if c_mtime == st.st_mtime_ns and c_size == st.st_size:
-                    return [dict(r) for r in c_records]
+        if use_cache:
+            with self._cache_lock:
+                cached = self._read_cache.get(key)
+                if cached is not None:
+                    c_mtime, c_size, c_records = cached
+                    if c_mtime == st.st_mtime_ns and c_size == st.st_size:
+                        return [dict(r) for r in c_records]
 
         # Cache miss -- parse from disk.
         records: list[dict[str, object]] = []

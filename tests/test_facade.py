@@ -213,6 +213,69 @@ def test_lazy_decay(data_dir: Path) -> None:
     assert lessons[0].confidence == 0.75  # 0.8 - 0.05
 
 
+def test_decay_counter_persists_across_restart(data_dir: Path) -> None:
+    """Decay fires even when each inject_for runs in a fresh instance.
+
+    Models the flagship Claude Code hook: one short-lived process per call.
+    An in-process counter would reset every time and never reach the bar.
+    """
+    seed = AgentMemory(data_dir, decay_every=2)
+    err_id = seed.log_error("gpt-4o", "other_task", "SomeError: test")
+    seed.resolve(err_id, "fixed", lesson="Some lesson for other task")
+
+    # First call in one "process": counter 0->1, no decay.
+    AgentMemory(data_dir, decay_every=2).inject_for(
+        "unrelated", "claude", task_type="unrelated"
+    )
+    lessons = AgentMemory(data_dir)._store.search_lessons(task_type="other_task")
+    assert lessons[0].confidence == 0.8
+
+    # Second call in a brand-new instance: persisted counter 1->2, decay fires.
+    AgentMemory(data_dir, decay_every=2).inject_for(
+        "still unrelated", "claude", task_type="unrelated"
+    )
+    lessons = AgentMemory(data_dir)._store.search_lessons(task_type="other_task")
+    assert lessons[0].confidence == 0.75  # 0.8 - 0.05
+
+
+def test_injections_compaction_drops_closed_issued_keeps_pending(
+    data_dir: Path,
+) -> None:
+    """Compaction removes issued records of closed handles, keeps markers +
+    pending, and preserves idempotency (a duplicate report still returns False).
+    """
+    import json
+
+    mem = AgentMemory(data_dir, trust=False)
+    mem._COMPACT_THRESHOLD = 4  # force compaction quickly
+
+    err = mem.log_error("m", "t", "Boom: x")
+    mem.resolve(err, "fixed", lesson="when boom, check fuse")
+
+    # Two injections we will close, one we leave pending.
+    closed = [mem.inject_for("boom task", "m", task_type="t") for _ in range(2)]
+    pending = mem.inject_for("boom task", "m", task_type="t")
+    for inj in closed:
+        assert mem.report_outcome(inj, success=True) is True
+
+    path = data_dir / "injections.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    issued_ids = {r["handle_id"] for r in rows if r["event"] == "issued"}
+    reported_ids = {r["handle_id"] for r in rows if r["event"] == "reported"}
+
+    # Closed handles: issued dropped, marker kept. Pending: issued retained.
+    for inj in closed:
+        assert inj.handle_id not in issued_ids
+        assert inj.handle_id in reported_ids
+    assert pending.handle_id in issued_ids
+
+    # Idempotency survives compaction: re-reporting a closed handle -> False.
+    assert mem.report_outcome(closed[0], success=True) is False
+    # Pending is still reportable and still discoverable.
+    assert {i.handle_id for i in mem.pending_injections()} == {pending.handle_id}
+    assert mem.report_outcome(pending, success=True) is True
+
+
 def test_trust_disabled(data_dir: Path) -> None:
     """trust=False: everything works, no crash on report, no trust in stats."""
     mem = AgentMemory(data_dir, trust=False)
