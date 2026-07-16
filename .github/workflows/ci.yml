@@ -24,3 +24,19 @@ jobs:
         run: mypy
       - name: Tests
         run: pytest --cov=errlore --cov-fail-under=80
+
+  # Dependency SCA: fail on known-vulnerable pins in the resolved environment.
+  # Complements Dependabot (which only proposes bumps) with a hard gate.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        # Upgrade pip first so pip-audit doesn't flag the runner's own
+        # (potentially stale) pip instead of project dependencies.
+        run: python -m pip install --upgrade pip && pip install -e . pip-audit
+      - name: pip-audit
+        run: pip-audit
