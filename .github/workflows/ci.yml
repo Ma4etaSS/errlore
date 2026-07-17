@@ -21,8 +21,12 @@ jobs:
       - name: Version drift gate (pyproject vs site JSON-LD)
         run: |
           python - <<'PY'
-          import pathlib, re, tomllib
-          pkg = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          # No tomllib: it is stdlib only since 3.11 and this runs on the 3.10 matrix leg.
+          import pathlib, re
+          toml = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          vm = re.search(r'^version\s*=\s*"([^"]+)"', toml, re.MULTILINE)
+          assert vm, "version not found in pyproject.toml"
+          pkg = vm.group(1)
           html = pathlib.Path("site/index.html").read_text(encoding="utf-8")
           m = re.search(r'"softwareVersion":\s*"([^"]+)"', html)
           assert m, "softwareVersion not found in site/index.html"
