@@ -225,13 +225,35 @@ errlore init claude-code            # or: --project for this repo only
 Failed Bash commands become lessons; every new session is briefed on past
 pitfalls. See [examples/claude-code/](examples/claude-code/).
 
+**LangChain** — first-class middleware + callbacks (`pip install errlore[langchain]`):
+
+```python
+from errlore import AgentMemory
+from errlore.integrations.langchain import ErrloreCallbackHandler, ErrloreMiddleware
+from langchain.agents import create_agent
+
+mem = AgentMemory("./errlore-data")
+mw = ErrloreMiddleware(mem, model="gpt-5.5", task_type="agent")
+
+agent = create_agent(model="gpt-5.5", tools=[...], middleware=[mw])
+result = agent.invoke(
+    {"messages": [("user", "extract the invoice dates")]},
+    config={"callbacks": [ErrloreCallbackHandler(mem, model="gpt-5.5")]},
+)
+mw.report(success=True)   # after YOUR validation of the result
+```
+
+`ErrloreMiddleware` injects relevant lessons into the system prompt on each
+run; `ErrloreCallbackHandler` auto-captures tool/LLM errors into memory —
+the same capture loop as the Claude Code hooks.
+
 | Provider    | Example                                              |
 |-------------|------------------------------------------------------|
 | Claude Code | [examples/claude-code/](examples/claude-code/) — hooks, `errlore init claude-code` |
+| LangChain   | [src/errlore/integrations/langchain.py](src/errlore/integrations/langchain.py) — middleware + callbacks, [examples/langchain_agent.py](examples/langchain_agent.py) |
 | Open WebUI  | [integrations/openwebui/](integrations/openwebui/) — memory Filter + feedback Action |
 | OpenAI      | [examples/openai_agent.py](examples/openai_agent.py) |
 | Anthropic   | [examples/anthropic_agent.py](examples/anthropic_agent.py) |
-| LangChain   | [examples/langchain_agent.py](examples/langchain_agent.py) |
 
 The SDK examples run offline with `python examples/<name>.py` (mock responses,
 no API keys). Set `use_api=True` to call real models.

@@ -1,171 +1,78 @@
 #!/usr/bin/env python3
-"""LangChain integration example -- errlore as system-prompt middleware.
+"""LangChain integration example -- the closed failure-memory loop.
 
-errlore enriches the system message before every LLM call, injecting
-relevant lessons and known-issue warnings.  This is the ideal integration
-point: no framework monkey-patching, works with any LangChain chat model.
+Uses the first-class integration (``errlore.integrations.langchain``):
 
-Requires: pip install langchain-openai  (or langchain-anthropic)
+* ``ErrloreMiddleware`` injects relevant lessons into the agent's system
+  prompt on each run (langchain >= 1.0 ``create_agent`` middleware), and
+* ``ErrloreCallbackHandler`` auto-captures tool/LLM errors into memory.
 
-Note: LangChain >=1.x does NOT expose ``create_agent`` / ``dynamic_prompt``
-middleware.  This example uses ``ChatOpenAI`` + ``SystemMessage`` directly,
-which is the stable, documented integration pattern.
+Requires: pip install errlore[langchain]
 
-Run offline (no API key needed):
+Run offline (no API key needed) -- the demo uses a fake chat model:
     python examples/langchain_agent.py
 
-The ``if __name__`` block uses a mock instead of a real LLM call.
+Swap ``_demo_model()`` for ``"gpt-5.5"`` / any chat model to run for real.
 """
 
 from __future__ import annotations
 
-import os
 import tempfile
-from pathlib import Path
 
-from errlore import AgentMemory, Injection
+from langchain.agents import create_agent
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
 
-# Model is just a label to errlore (it never calls the API itself). Override
-# with your own; the default is a small, cheap, widely-available option.
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
-
-# -- errlore + LangChain glue ------------------------------------------------
-
-def build_system_message(
-    mem: AgentMemory,
-    task: str,
-    *,
-    task_type: str = "code_generation",
-) -> tuple[str, Injection]:
-    """Build a system message enriched with errlore context.
-
-    Returns the system text and the Injection handle (needed for
-    ``report_outcome`` later).
-    """
-    inj = mem.inject_for(task, model=MODEL, task_type=task_type)
-    base = "You are a helpful coding assistant. Write clean, tested code."
-    system = base + "\n\n" + inj.text if inj.text else base
-    return system, inj
+from errlore import AgentMemory
+from errlore.integrations.langchain import (
+    ErrloreCallbackHandler,
+    ErrloreMiddleware,
+)
 
 
-def ask_langchain(task: str, system: str) -> str:
-    """Call LangChain ChatOpenAI with a system + user message.
-
-    Requires OPENAI_API_KEY in the environment.
-    """
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
-
-    llm = ChatOpenAI(model=MODEL)
-    response = llm.invoke([
-        SystemMessage(content=system),
-        HumanMessage(content=task),
-    ])
-    return str(response.content)
+def _demo_model() -> GenericFakeChatModel:
+    """Offline stand-in; replace with a real chat model string or instance."""
+    return GenericFakeChatModel(
+        messages=iter([AIMessage(content="Dates: 2026-05-01, 2026-06-01.")])
+    )
 
 
-def run_with_errlore(
-    mem: AgentMemory,
-    task: str,
-    *,
-    use_api: bool = False,
-    mock_response: str = "",
-) -> str:
-    """Run a task through errlore-augmented LangChain agent.
+def main() -> None:
+    data_dir = tempfile.mkdtemp(prefix="errlore-langchain-")
+    mem = AgentMemory(data_dir, trust=False)
 
-    When *use_api* is False (default), returns *mock_response* instead
-    of calling LangChain/OpenAI -- useful for offline demos and tests.
-    """
-    system, inj = build_system_message(mem, task)
+    # Monday: a failure gets resolved into a lesson.
+    err_id = mem.log_error(
+        "demo-model", "agent", "DateError: read the invoice year as 2025"
+    )
+    mem.resolve(
+        err_id,
+        "fixed by re-checking the year digits",
+        lesson="when extracting invoice dates, verify the year digits "
+        "against the document header",
+    )
 
-    if use_api:
-        try:
-            answer = ask_langchain(task, system)
-        except Exception as exc:
-            err_id = mem.log_error(MODEL, "code_generation", error=exc)
-            mem.resolve(err_id, f"LangChain call failed: {exc}")
-            mem.report_outcome(inj, success=False)
-            raise
-    else:
-        answer = mock_response
+    # Tuesday: the same class of task -- the lesson rides along automatically.
+    mw = ErrloreMiddleware(mem, model="demo-model", task_type="agent")
+    agent = create_agent(
+        model=_demo_model(),
+        tools=[],
+        middleware=[mw],
+    )
+    result = agent.invoke(
+        {"messages": [("user", "extract the invoice dates from this PDF")]},
+        config={"callbacks": [ErrloreCallbackHandler(mem, model="demo-model")]},
+    )
 
-    # Evaluate and close the loop (simple heuristic -- real agents use LLM-as-judge)
-    success = len(answer) > 0
-    mem.report_outcome(inj, success=success)
+    print("agent answer:", result["messages"][-1].content)
+    assert mw.last_injection is not None
+    print("\ninjected block was:\n" + (mw.last_injection.text or "(empty)"))
 
-    return answer
-
-
-# -- Offline demo ------------------------------------------------------------
-
-def _demo() -> None:
-    """Self-contained offline demo -- no API key needed.
-
-    Shows how errlore accumulates knowledge across multiple agent runs
-    and enriches prompts with relevant lessons.
-    """
-    with tempfile.TemporaryDirectory() as tmp:
-        mem = AgentMemory(Path(tmp) / "agent_memory")
-
-        # --- Seed two past failures ---
-
-        # Failure 1: agent forgot error handling
-        err1 = mem.log_error(
-            MODEL, "code_generation",
-            error="Generated function has no try/except; crashes on bad input",
-        )
-        mem.resolve(
-            err1,
-            "Wrapped parsing in try/except with descriptive ValueError",
-            lesson="Always wrap I/O and parsing code in try/except blocks "
-                   "and raise descriptive errors instead of letting raw "
-                   "exceptions propagate.",
-        )
-
-        # Failure 2: agent used deprecated API
-        err2 = mem.log_error(
-            MODEL, "code_generation",
-            error="Used requests.get without timeout; hangs in production",
-        )
-        mem.resolve(
-            err2,
-            "Added timeout=30 to all requests calls",
-            lesson="Always pass an explicit timeout to HTTP calls "
-                   "(requests, httpx, aiohttp). Default no-timeout hangs "
-                   "in production.",
-        )
-
-        # --- Run a new task -- errlore injects both lessons ---
-
-        task = "Write a Python function that fetches JSON from a URL and parses it."
-        answer = run_with_errlore(
-            mem, task,
-            mock_response=(
-                "def fetch_json(url: str, timeout: int = 30) -> dict:\n"
-                "    import requests\n"
-                "    try:\n"
-                "        resp = requests.get(url, timeout=timeout)\n"
-                "        resp.raise_for_status()\n"
-                "        return resp.json()\n"
-                "    except requests.RequestException as exc:\n"
-                "        raise ValueError(f'Failed to fetch {url}: {exc}') from exc\n"
-            ),
-        )
-
-        # Show what errlore injected
-        system, _inj = build_system_message(mem, task)
-        print("=== System message (with errlore injection) ===")
-        print(system)
-        print()
-        print(f"=== Agent answer (mock) ===\n{answer}")
-        print()
-
-        stats = mem.stats()
-        print("=== Stats ===")
-        for k, v in stats.items():
-            print(f"  {k}: {v}")
+    # Close the loop AFTER validating the result with your own check
+    # (schema, tests, exit code -- never the model's own opinion).
+    mw.report(success=True)
+    print("\nlesson reinforced; stats:", mem.stats())
 
 
 if __name__ == "__main__":
-    _demo()
+    main()

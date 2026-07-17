@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-17
+
+### Added
+- **First-class LangChain integration** (`pip install errlore[langchain]`),
+  module `errlore.integrations.langchain`:
+  - `ErrloreMiddleware` — langchain ≥ 1.0 `create_agent` middleware that
+    injects relevant lessons into the system prompt on the first model call
+    of each run (and keeps the block consistent through the tool loop), with
+    a `.report(success)` method to close the reinforcement loop after your
+    own validation. Sync + async (`wrap_model_call` / `awrap_model_call`).
+  - `ErrloreCallbackHandler` — auto-captures `on_tool_error` / `on_llm_error`
+    into memory (chain errors opt-in to avoid double-counting); defensive by
+    contract — capture failures never raise into the agent loop. Works with
+    anything that accepts langchain callbacks, needs only `langchain-core`.
+  - Tested end-to-end against a real `create_agent` loop with a recording
+    fake model (the assertion is "the lesson text reached the model's
+    prompt", not internals). `examples/langchain_agent.py` runs offline.
+
+### Fixed
+- `examples/langchain_agent.py` claimed langchain ≥ 1.x "does NOT expose
+  create_agent middleware" — false for a year; rewritten on the real API.
+- Site JSON-LD `softwareVersion` said `0.2.1` (live site too) and the test
+  count said 187 (now 289); install CTA was a click-only `<div>` (now a
+  keyboard-accessible `<button>`); added a `<main>` landmark. CI now fails
+  on pyproject-vs-site version drift.
+
 ## [0.4.1] - 2026-07-16
 
 Supply-chain / release-process hardening pass (external audit follow-up).
