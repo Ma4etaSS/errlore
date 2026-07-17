@@ -55,6 +55,26 @@ wherever an agent repeats the *same class* of mistake:
 It fixes what the model doesn't *know* (a convention, a gotcha), not what it
 *can't do* — see the benchmark below.
 
+### Why only failures? (FAQ)
+
+Because that's the slice of memory we could *prove* pays for itself. errlore
+was extracted from a 324K-LOC agent system with general remember-everything
+memory; when we benchmarked which memory changed outcomes, one loop survived —
+failure → lesson → injection into the next similar task (67–70% repeat-error
+reduction, McNemar p ≤ 2e-9). Failures are special for two reasons:
+
+1. **They carry a built-in relevance signal** — a resolved error says exactly
+   *when* the memory matters again (same task class) and *what to say* (the
+   fix). General memories don't; you inject "context" and hope.
+2. **Injection has a measurable cost** — lessons *break 12–15% of
+   previously-passing tasks* (interference). errlore controls that per lesson
+   (harm gate, shadow mode); a remember-everything memory multiplies the
+   interference surface with no per-item outcome tracking to contain it.
+
+Other memory types aren't useless — they just don't (yet) have this
+verifiable structure. Longer discussion:
+[issue #1](https://github.com/Ma4etaSS/errlore/issues/1).
+
 ## Quickstart (< 5 minutes)
 
 ```bash
